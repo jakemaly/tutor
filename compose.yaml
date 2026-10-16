@@ -1,0 +1,40 @@
+name: socratic-ai-tutor
+
+services:
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    ports:
+      - "5173:5173"
+    environment:
+      HOST: 0.0.0.0
+      BACKEND_URL: http://backend:8000
+      DEV_CACHE_DIR: /tmp/vite-cache
+    volumes:
+      - ./frontend:/workspace/frontend
+    depends_on:
+      backend:
+        condition: service_healthy
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    ports:
+      - "8000:8000"
+    env_file:
+      - path: .env
+        required: false
+    volumes:
+      - ./backend:/workspace/backend
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health')"
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
