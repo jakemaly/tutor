@@ -19,3 +19,13 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+Additional notice for adapted assistant-ui components
+
+Parts of `frontend/src/components/` and `frontend/src/hooks/` are adapted from
+the assistant-ui minimal template at commit
+`d56b46509d2a0e3f97494dd3b7b1e1d7fdd4f37f`:
+https://github.com/assistant-ui/assistant-ui/tree/d56b46509d2a0e3f97494dd3b7b1e1d7fdd4f37f/templates/minimal
+
+Copyright (c) 2026 AgentbaseAI Inc. The MIT license terms above also apply to
+these adapted portions.

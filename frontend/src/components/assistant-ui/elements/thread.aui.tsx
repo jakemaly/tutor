@@ -1,4 +1,4 @@
-// Adapted from assistant-ui d56b465; see frontend/THIRD_PARTY_NOTICES.md.
+// Adapted from assistant-ui d56b465; attribution and license are in LICENSE.
 import { MarkdownText } from "@/components/assistant-ui/elements/markdown-text";
 import { TooltipIconButton } from "@/components/assistant-ui/elements/tooltip-icon-button";
 import { Button } from "@/components/ui/button";

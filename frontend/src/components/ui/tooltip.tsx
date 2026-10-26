@@ -1,4 +1,4 @@
-// Adapted from assistant-ui d56b465; see frontend/THIRD_PARTY_NOTICES.md.
+// Adapted from assistant-ui d56b465; attribution and license are in LICENSE.
 "use client";
 
 import { Tooltip as TooltipPrimitive } from "@base-ui/react/tooltip";

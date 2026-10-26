@@ -1,4 +1,4 @@
-// Adapted from assistant-ui d56b465; see frontend/THIRD_PARTY_NOTICES.md.
+// Adapted from assistant-ui d56b465; attribution and license are in LICENSE.
 import { Button as ButtonPrimitive } from "@base-ui/react/button";
 import { cva, type VariantProps } from "class-variance-authority";
 
