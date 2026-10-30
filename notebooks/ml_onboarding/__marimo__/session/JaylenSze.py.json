@@ -1,0 +1,289 @@
+{
+  "version": "1",
+  "metadata": {
+    "marimo_version": "0.25.2",
+    "script_metadata_hash": "a6e9facbbfc70dc98bdb3cc2a11bbdbe"
+  },
+  "cells": [
+    {
+      "id": "Hbol",
+      "code_hash": "1d0db38904205bec4d6f6f6a1f6cec3e",
+      "outputs": [],
+      "console": []
+    },
+    {
+      "id": "MJUe",
+      "code_hash": "153b2b9b4a59ada9e300114848d9ba7a",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">To run this, press \"<em>Runtime</em>\" and press \"<em>Run all</em>\" on a <strong>free</strong> Tesla T4 Google Colab instance!</span>\n<div class=\"align-center\">\n<a href=\"https://unsloth.ai/\"><img src=\"https://github.com/unslothai/unsloth/raw/main/images/unsloth%20new%20logo.png\" width=\"115\"></a>\n<a href=\"https://discord.gg/unsloth\"><img src=\"https://github.com/unslothai/unsloth/raw/main/images/Discord button.png\" width=\"145\"></a>\n<a href=\"https://unsloth.ai/docs/\"><img src=\"https://github.com/unslothai/unsloth/blob/main/images/documentation%20green%20button.png?raw=true\" width=\"125\"></a> Join Discord if you need help + \u2b50 <i>Star us on <a href=\"https://github.com/unslothai/unsloth\">Github</a> </i> \u2b50\n</div>\n\n<span class=\"paragraph\">To install Unsloth on your local device, follow <a href=\"https://unsloth.ai/docs/get-started/install\" rel=\"noopener noreferrer\" target=\"_blank\">our guide</a>. This notebook is licensed <a href=\"https://github.com/unslothai/notebooks?tab=LGPL-3.0-1-ov-file#readme\" rel=\"noopener noreferrer\" target=\"_blank\">LGPL-3.0</a>.</span>\n<span class=\"paragraph\">You will learn how to do <a href=\"#Data\">data prep</a>, how to <a href=\"#Train\">train</a>, how to <a href=\"#Inference\">run the model</a>, &amp; how to save it</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "vblA",
+      "code_hash": "c3a67c673b539f40a7ff4b63a15a7631",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h3 id=\"news\">News</h3></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "bkHC",
+      "code_hash": "f24b0610c0e1769c9da121d222660f69",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">Introducing <strong><a href=\"https://unsloth.ai/docs/desktop\" rel=\"noopener noreferrer\" target=\"_blank\">Unsloth Desktop</a></strong>, the first desktop app to run and train models. Free and open-source for macOS, Windows and Linux. <a href=\"https://github.com/unslothai/unsloth\" rel=\"noopener noreferrer\" target=\"_blank\">GitHub</a> \u2022 <a href=\"https://unsloth.ai/download\" rel=\"noopener noreferrer\" target=\"_blank\">Download</a></span>\n<span class=\"paragraph\"><a href=\"https://unsloth.ai/docs/desktop\"><img src=\"https://raw.githubusercontent.com/unslothai/notebooks/refs/heads/main/assets/unsloth-qwen3-8.png\" width=\"350\" alt=\"Introducing Unsloth Desktop\"></a></span>\n<span class=\"paragraph\">Train MoEs - DeepSeek, GLM, Qwen and gpt-oss 12x faster with 35% less VRAM. <a href=\"https://unsloth.ai/docs/new/faster-moe\" rel=\"noopener noreferrer\" target=\"_blank\">Blog</a></span>\n<span class=\"paragraph\">Ultra Long-Context Reinforcement Learning is here with 7x more context windows! <a href=\"https://unsloth.ai/docs/new/grpo-long-context\" rel=\"noopener noreferrer\" target=\"_blank\">Blog</a></span>\n<span class=\"paragraph\">New in Reinforcement Learning: <a href=\"https://unsloth.ai/docs/new/fp8-reinforcement-learning\" rel=\"noopener noreferrer\" target=\"_blank\">FP8 RL</a> \u2022 <a href=\"https://unsloth.ai/docs/new/vision-reinforcement-learning-vlm-rl\" rel=\"noopener noreferrer\" target=\"_blank\">Vision RL</a> \u2022 <a href=\"https://unsloth.ai/docs/basics/memory-efficient-rl\" rel=\"noopener noreferrer\" target=\"_blank\">Standby</a> \u2022 <a href=\"https://unsloth.ai/docs/new/gpt-oss-reinforcement-learning\" rel=\"noopener noreferrer\" target=\"_blank\">gpt-oss RL</a></span>\n<span class=\"paragraph\">Visit our docs for all our <a href=\"https://unsloth.ai/docs/get-started/unsloth-model-catalog\" rel=\"noopener noreferrer\" target=\"_blank\">model uploads</a> and <a href=\"https://unsloth.ai/docs/get-started/unsloth-notebooks\" rel=\"noopener noreferrer\" target=\"_blank\">notebooks</a>.</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "lEQa",
+      "code_hash": "ff1834f7b9859a2645d05ea631c524a1",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h3 id=\"installation\">Installation</h3></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "PKri",
+      "code_hash": "58508d73dc45b22bf45086d47b398c62",
+      "outputs": [],
+      "console": []
+    },
+    {
+      "id": "Xref",
+      "code_hash": "e68ebfa7f539f122ab1527f36b307314",
+      "outputs": [],
+      "console": []
+    },
+    {
+      "id": "SFPL",
+      "code_hash": "bab34d44c2e2b1ae628c5e5872aae2b9",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h3 id=\"unsloth\">Unsloth</h3></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "BYtC",
+      "code_hash": "36c9e325803fae82f1376a217b64faad",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">Load up <code>Qwen 2.5 3B Instruct</code>, and set parameters</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "RGSE",
+      "code_hash": "00717ad60c583ea0fdd29451de3007a8",
+      "outputs": [],
+      "console": []
+    },
+    {
+      "id": "Kclp",
+      "code_hash": "409f2fd3ee519cc33c41b233868d7bc5",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h3 id=\"data-prep\">Data Prep</h3>\n<span class=\"paragraph\"><a name=\"Data\"></a></span>\n<span class=\"paragraph\">We directly leverage <a href=\"https://gist.github.com/willccbb/4676755236bb08cab5f4e54a0475d6fb\" rel=\"noopener noreferrer\" target=\"_blank\">@willccbb</a> for data prep and all reward functions. You are free to create your own!</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "emfo",
+      "code_hash": "2bcc15c970ee627784f674c290d761eb",
+      "outputs": [],
+      "console": []
+    },
+    {
+      "id": "Hstk",
+      "code_hash": "2af7db2ef32f82cc582ba378559c2fd9",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\"><a name=\"Train\"></a></span>\n<h3 id=\"train-the-model\">Train the model</h3>\n<span class=\"paragraph\">Now set up GRPO Trainer and all configurations!</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "nWHF",
+      "code_hash": "d826355ebf76da8869cd47230c78dec6",
+      "outputs": [],
+      "console": []
+    },
+    {
+      "id": "iLit",
+      "code_hash": "ca824d53632f445c5b0291dd6d0a95dd",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">And let's run the trainer! If you scroll up, you'll see a table of rewards. The goal is to see the <code>reward</code> column increase!</span>\n<span class=\"paragraph\">You might have to wait 150 to 200 steps for any action. You'll probably get 0 reward for the first 100 steps. Please be patient!</span>\n<table>\n<thead>\n<tr>\n<th>Step</th>\n<th>Training Loss</th>\n<th>reward</th>\n<th>reward_std</th>\n<th>completion_length</th>\n<th>kl</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td>1</td>\n<td>0.000000</td>\n<td>0.125000</td>\n<td>0.000000</td>\n<td>200.000000</td>\n<td>0.000000</td>\n</tr>\n<tr>\n<td>2</td>\n<td>0.000000</td>\n<td>0.072375</td>\n<td>0.248112</td>\n<td>200.000000</td>\n<td>0.000000</td>\n</tr>\n<tr>\n<td>3</td>\n<td>0.000000</td>\n<td>-0.079000</td>\n<td>0.163776</td>\n<td>182.500000</td>\n<td>0.000005</td>\n</tr>\n</tbody>\n</table></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "ZHCJ",
+      "code_hash": "c76e1e0351786f7649d803b3e4bfa3ef",
+      "outputs": [],
+      "console": []
+    },
+    {
+      "id": "ROlb",
+      "code_hash": "2069b0d37bf9370573d8ca51d51ed8f2",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\"><a name=\"Inference\"></a></span>\n<h3 id=\"inference\">Inference</h3>\n<span class=\"paragraph\">Now let's try the model we just trained! First, let's first try the model without any GRPO trained:</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "qnkX",
+      "code_hash": "64a1a708b3ce87b08765fb61e9e822c6",
+      "outputs": [],
+      "console": []
+    },
+    {
+      "id": "TqIu",
+      "code_hash": "19fb420259bff24564c4c08073c94be7",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">And now with the LoRA we just trained with GRPO - we first save the LoRA first!</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "Vxnm",
+      "code_hash": "795f25216bec2ccb8f448db791207af8",
+      "outputs": [],
+      "console": []
+    },
+    {
+      "id": "DnEU",
+      "code_hash": "65637296e8b834ba174005497c19a296",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">Now we load the LoRA and test:</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "ulZA",
+      "code_hash": "1c7d401021f8936cc0ecb38520efd746",
+      "outputs": [],
+      "console": []
+    },
+    {
+      "id": "ecfG",
+      "code_hash": "a9c773f33a98eeed83a431cde6f6ae78",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">Our reasoning model is much better - it's not always correct, since we only trained it for an hour or so - it'll be better if we extend the sequence length and train for longer!</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "Pvdt",
+      "code_hash": "7768c1d91c015b73a6397d6bf18fbe67",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\"><a name=\"Save\"></a></span>\n<h3 id=\"saving-to-float16-for-vllm\">Saving to float16 for VLLM</h3>\n<span class=\"paragraph\">We also support saving to <code>float16</code> directly. Select <code>merged_16bit</code> for float16 or <code>merged_4bit</code> for int4. We also allow <code>lora</code> adapters as a fallback. Use <code>push_to_hub_merged</code> to upload to your Hugging Face account! You can go to <a href=\"https://huggingface.co/settings/tokens\" rel=\"noopener noreferrer\" target=\"_blank\">https://huggingface.co/settings/tokens</a> for your personal tokens. See <a href=\"https://unsloth.ai/docs/basics/inference-and-deployment\" rel=\"noopener noreferrer\" target=\"_blank\">our docs</a> for more deployment options.</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "ZBYS",
+      "code_hash": "50eb241f1eded4736cab99eb24c4abfa",
+      "outputs": [],
+      "console": []
+    },
+    {
+      "id": "aLJB",
+      "code_hash": "0ed4a63adff0fc2c228e67760f8c37ec",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h3 id=\"gguf-llamacpp-conversion\">GGUF / llama.cpp Conversion</h3>\n<span class=\"paragraph\">To save to <code>GGUF</code> / <code>llama.cpp</code>, we support it natively now! We clone <code>llama.cpp</code> and we default save it to <code>q8_0</code>. We allow all methods like <code>q4_k_m</code>. Use <code>save_pretrained_gguf</code> for local saving and <code>push_to_hub_gguf</code> for uploading to HF.</span>\n<span class=\"paragraph\">Some supported quant methods (full list on our <a href=\"https://unsloth.ai/docs/basics/inference-and-deployment/saving-to-gguf\" rel=\"noopener noreferrer\" target=\"_blank\">docs page</a>):</span>\n<ul>\n<li><code>q8_0</code> - Fast conversion. High resource use, but generally acceptable.</li>\n<li><code>q4_k_m</code> - Recommended. Uses Q6_K for half of the attention.wv and feed_forward.w2 tensors, else Q4_K.</li>\n<li><code>q5_k_m</code> - Recommended. Uses Q6_K for half of the attention.wv and feed_forward.w2 tensors, else Q5_K.</li>\n</ul>\n<span class=\"paragraph\">[<strong>NEW</strong>] To finetune and auto export to Ollama, try our <a href=\"https://colab.research.google.com/github/unslothai/notebooks/blob/main/nb/Llama3_(8B)-Ollama.ipynb\" rel=\"noopener noreferrer\" target=\"_blank\">Ollama notebook</a></span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "nHfw",
+      "code_hash": "90cfca01cad6037bf002ff7f298c8d46",
+      "outputs": [],
+      "console": []
+    },
+    {
+      "id": "xXTn",
+      "code_hash": "192220d32fb89ccedbb1f8a7e41cb7ae",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">Now, use the <code>qwen_finetune.Q8_0.gguf</code> file or <code>qwen_finetune.Q4_K_M.gguf</code> file in llama.cpp.</span>\n<span class=\"paragraph\">And we're done! If you have any questions on Unsloth, we have a <a href=\"https://discord.gg/unsloth\" rel=\"noopener noreferrer\" target=\"_blank\">Discord</a> channel! If you find any bugs or want to keep updated with the latest LLM stuff, or need help, join projects etc, feel free to join our Discord!</span>\n<span class=\"paragraph\">Some other resources:</span>\n<ol>\n<li>Train your own reasoning model - Llama GRPO notebook <a href=\"https://colab.research.google.com/github/unslothai/notebooks/blob/main/nb/Llama3.1_(8B)-GRPO.ipynb\" rel=\"noopener noreferrer\" target=\"_blank\">Free Colab</a></li>\n<li>Saving finetunes to Ollama. <a href=\"https://colab.research.google.com/github/unslothai/notebooks/blob/main/nb/Llama3_(8B)-Ollama.ipynb\" rel=\"noopener noreferrer\" target=\"_blank\">Free notebook</a></li>\n<li>Llama 3.2 Vision finetuning - Radiography use case. <a href=\"https://colab.research.google.com/github/unslothai/notebooks/blob/main/nb/Llama3.2_(11B)-Vision.ipynb\" rel=\"noopener noreferrer\" target=\"_blank\">Free Colab</a></li>\n<li>See notebooks for DPO, ORPO, Continued pretraining, conversational finetuning and more on our <a href=\"https://unsloth.ai/docs/get-started/unsloth-notebooks\" rel=\"noopener noreferrer\" target=\"_blank\">documentation</a>!</li>\n</ol>\n<div class=\"align-center\">\n  <a href=\"https://unsloth.ai\"><img src=\"https://github.com/unslothai/unsloth/raw/main/images/unsloth%20new%20logo.png\" width=\"115\"></a>\n  <a href=\"https://discord.gg/unsloth\"><img src=\"https://github.com/unslothai/unsloth/raw/main/images/Discord.png\" width=\"145\"></a>\n  <a href=\"https://unsloth.ai/docs/\"><img src=\"https://github.com/unslothai/unsloth/blob/main/images/documentation%20green%20button.png?raw=true\" width=\"125\"></a>\n\n  Join Discord if you need help + \u2b50\ufe0f <i>Star us on <a href=\"https://github.com/unslothai/unsloth\">Github</a> </i> \u2b50\ufe0f\n</div>\n\n<span class=\"paragraph\">This notebook and all Unsloth notebooks are licensed <a href=\"https://github.com/unslothai/notebooks?tab=LGPL-3.0-1-ov-file#readme\" rel=\"noopener noreferrer\" target=\"_blank\">LGPL-3.0</a>.</span></span>"
+          }
+        }
+      ],
+      "console": []
+    }
+  ]
+}
