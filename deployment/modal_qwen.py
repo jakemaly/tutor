@@ -9,6 +9,7 @@ MODEL_FILE = "Qwen3.5-9B-Q4_K_M.gguf"
 MODEL_REVISION = "42c29f9ead88634cbc48378a71d1f55f7c76ad70"
 
 TOKENIZER_REPO = "Qwen/Qwen3.5-9B"
+TOKENIZER_REVISION = "c202236235762e1c871ad0ccb60c8ee5ba337b9a"
 SERVED_MODEL_NAME = "socratic-tutor"
 
 GGUF_PLUGIN_REVISION = "e454affe0ca23c9dc8754ec3033270cb30622ed5"
@@ -65,12 +66,23 @@ def serve():
     """Start the model server inside the remote container."""
     import subprocess
 
+    from huggingface_hub import snapshot_download
+
+    config_dir = snapshot_download(
+        repo_id=TOKENIZER_REPO,
+        revision=TOKENIZER_REVISION,
+        allow_patterns=["*.json", "*.jinja", "*.txt"],
+        local_dir="/cache/qwen-config",
+    )
+
     command = [
         "vllm",
         "serve",
         f"{MODEL_REPO}:Q4_K_M",
         "--revision", MODEL_REVISION,
         "--tokenizer", TOKENIZER_REPO,
+        "--tokenizer-revision", TOKENIZER_REVISION,
+        "--hf-config-path", config_dir,
         "--served-model-name", SERVED_MODEL_NAME,
         "--host", "0.0.0.0",
         "--port", "8000",
