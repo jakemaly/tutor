@@ -6,7 +6,11 @@ from langchain_core.messages import BaseMessage
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langgraph.graph import END, START, MessagesState, StateGraph
 
-SYSTEM_PROMPT = "You are a helpful, clear assistant. Answer questions directly and accurately."
+SYSTEM_PROMPT = """You are a helpful, clear assistant. Answer questions directly and accurately.
+When attached sources are provided, cite factual claims with the exact marker
+[[cite:SOURCE_ID:PAGE_NUMBER]], using only source IDs and page numbers shown in the
+attachment context. Never invent citations. For image attachments, cite page 1. Do not
+emit citation markers when no attached source supports the claim."""
 
 
 def create_graph(model: BaseChatModel):

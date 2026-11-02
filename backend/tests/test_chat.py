@@ -2,7 +2,9 @@
 
 # asyncio drives async graph calls; json decodes the line-based streaming protocol in assertions.
 import asyncio
+import io
 import json
+from uuid import uuid4
 
 # pytest and httpx test routes and emulate the model endpoint without a network.
 import httpx
@@ -12,10 +14,18 @@ from langchain_core.language_models.fake_chat_models import FakeListChatModel
 from langchain_core.messages import BaseMessage, HumanMessage
 from langchain_openai import ChatOpenAI
 from pydantic import PrivateAttr
+from pypdf import PdfWriter
 
 from app.config import Settings
+from app.documents import UploadedSource, create_source
 from app.graph import SYSTEM_PROMPT, create_graph
-from app.main import ChatRequest, _messages_for_graph, create_app
+from app.main import (
+    ChatRequest,
+    _citation_link,
+    _fallback_citations,
+    _messages_for_graph,
+    create_app,
+)
 from app.models import create_chat_model
 
 
@@ -180,6 +190,173 @@ def test_rejects_non_text_parts_and_unsupported_roles() -> None:
 
     assert image.status_code == 422
     assert tool.status_code == 422
+
+
+def test_uploads_serves_and_removes_validated_image_source() -> None:
+    """An uploaded source is addressable by ID and removal invalidates its link."""
+    client = TestClient(create_app(settings=configured_settings()))
+    source_id = str(uuid4())
+    png = b"\x89PNG\r\n\x1a\n" + b"image data"
+
+    upload = client.put(
+        f"/api/attachments/{source_id}",
+        content=png,
+        headers={"content-type": "image/png", "x-file-name": "notes%20page.png"},
+    )
+
+    assert upload.status_code == 200
+    assert upload.json() == {
+        "id": source_id,
+        "filename": "notes page.png",
+        "mediaType": "image/png",
+        "pageCount": 1,
+    }
+    served = client.get(f"/api/attachments/{source_id}?page=1")
+    assert served.content == png
+    assert served.headers["content-type"] == "image/png"
+    assert client.get(f"/api/attachments/{source_id}?page=2").status_code == 404
+    assert client.delete(f"/api/attachments/{source_id}").status_code == 204
+    assert client.get(f"/api/attachments/{source_id}").status_code == 404
+
+
+def test_upload_rejects_mismatched_mime_type_and_file_signature() -> None:
+    """Client-provided content types do not bypass the file signature check."""
+    client = TestClient(create_app(settings=configured_settings()))
+
+    response = client.put(
+        f"/api/attachments/{uuid4()}",
+        content=b"not a png",
+        headers={"content-type": "image/png", "x-file-name": "image.png"},
+    )
+
+    assert response.status_code == 422
+    assert "contents do not match" in response.json()["detail"]
+
+
+def test_chat_resolves_uploaded_image_and_validates_citation_pages() -> None:
+    """Chat receives image bytes from the shared source ID; only valid citations link."""
+    source_id = str(uuid4())
+    model = RecordingFakeChatModel(responses=[f"I can see the image [[cite:{source_id}:1]]."])
+    client = TestClient(create_app(settings=configured_settings(), model=model))
+    png = b"\x89PNG\r\n\x1a\n" + b"image data"
+    source = client.put(
+        f"/api/attachments/{source_id}",
+        content=png,
+        headers={"content-type": "image/png", "x-file-name": "diagram.png"},
+    )
+    assert source.status_code == 200
+
+    response = client.post(
+        "/api/chat",
+        json={
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": "Explain this."},
+                        {
+                            "type": "file",
+                            "data": source_id,
+                            "mimeType": "image/png",
+                            "filename": "diagram.png",
+                        },
+                    ],
+                }
+            ]
+        },
+    )
+
+    assert response.status_code == 200
+    stream_text = "".join(
+        json.loads(line[2:]) for line in response.text.splitlines() if line.startswith("0:")
+    )
+    citation = f"[diagram.png, p. 1](/api/attachments/{source_id}?page=1#page=1)"
+    assert f"I can see the image {citation}." in stream_text
+    assert f"**Sources:** {citation}" in stream_text
+    sent_content = model._seen_messages[0][-1].content
+    assert any(part.get("type") == "image_url" for part in sent_content)
+    assert any(source_id in part.get("text", "") for part in sent_content)
+
+    uploaded_source = create_source(source_id, "diagram.png", "image/png", png)
+    sources = {source_id: uploaded_source}
+    assert _citation_link(source_id, 1, sources, {source_id}) == (
+        f"[diagram.png, p. 1](/api/attachments/{source_id}?page=1#page=1)"
+    )
+    assert _citation_link(source_id, 2, sources, {source_id}) == "[source unavailable]"
+    assert _citation_link(source_id, 1, sources, set()) == "[source unavailable]"
+
+
+def test_pdf_source_keeps_page_boundaries() -> None:
+    """Extracted PDF source records retain one text slot per original page."""
+    writer = PdfWriter()
+    writer.add_blank_page(width=100, height=100)
+    writer.add_blank_page(width=100, height=100)
+    buffer = io.BytesIO()
+    writer.write(buffer)
+
+    source = create_source(str(uuid4()), "lesson.pdf", "application/pdf", buffer.getvalue())
+
+    assert source.page_count == 2
+    assert source.pages == ("", "")
+
+
+def test_chat_adds_relevant_page_link_when_model_omits_citation_marker() -> None:
+    """The chat still cites a relevant attached page when the model ignores the marker format."""
+    source_id = str(uuid4())
+    source = UploadedSource(
+        id=source_id,
+        filename="Carbohydrates_Review.pdf",
+        media_type="application/pdf",
+        data=b"%PDF-test",
+        pages=(
+            "Glucose provides quick energy for cellular respiration.",
+            "Cellulose is a structural polysaccharide in plant cell walls.",
+        ),
+    )
+    app = create_app(
+        settings=configured_settings(),
+        model=FakeListChatModel(responses=["Cellulose supports plant cell walls."]),
+    )
+    app.state.sources[source_id] = source
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/chat",
+        json={
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": "What is cellulose used for?"},
+                        {
+                            "type": "file",
+                            "data": source_id,
+                            "mimeType": "application/pdf",
+                            "filename": source.filename,
+                        },
+                    ],
+                }
+            ]
+        },
+    )
+    stream_text = "".join(
+        json.loads(line[2:]) for line in response.text.splitlines() if line.startswith("0:")
+    )
+
+    assert response.status_code == 200
+    assert "**Sources:**" in stream_text
+    assert (
+        f"Cellulose supports plant cell walls. "
+        f"[Carbohydrates_Review.pdf, p. 2](/api/attachments/{source_id}?page=2#page=2)"
+        in stream_text
+    )
+    assert (
+        f"[Carbohydrates_Review.pdf, p. 2](/api/attachments/{source_id}?page=2#page=2)"
+        in stream_text
+    )
+    assert _fallback_citations(
+        "Cellulose supports plant cell walls.", {source_id: source}, {source_id}
+    ) == [f"[Carbohydrates_Review.pdf, p. 2](/api/attachments/{source_id}?page=2#page=2)"]
 
 
 @pytest.mark.parametrize(

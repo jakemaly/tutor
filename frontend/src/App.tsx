@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { AssistantRuntimeProvider } from "@assistant-ui/react";
 import { useDataStreamRuntime } from "@assistant-ui/react-data-stream";
+import { attachmentAdapter } from "@/lib/attachments";
 import { Thread } from "@/components/assistant-ui/elements/thread.aui";
 
 export default function App() {
@@ -25,6 +26,7 @@ function ChatSession() {
   const runtime = useDataStreamRuntime({
     api: "/api/chat",
     protocol: "data-stream",
+    adapters: { attachments: attachmentAdapter },
     onResponse: (response) => {
       if (response.ok) setError(null);
     },

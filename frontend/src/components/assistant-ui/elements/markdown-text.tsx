@@ -9,9 +9,22 @@ import {
   useIsMarkdownCodeBlock,
 } from "@assistant-ui/react-markdown";
 import remarkGfm from "remark-gfm";
-import { type FC, memo } from "react";
+import {
+  Children,
+  isValidElement,
+  type ComponentProps,
+  type FC,
+  type ReactNode,
+  memo,
+} from "react";
 import { CheckIcon, CopyIcon } from "lucide-react";
 
+import {
+  Citation,
+  InlineCitation,
+  Sources,
+  type CitationSource,
+} from "@/components/assistant-ui/elements/citations";
 import { TooltipIconButton } from "@/components/assistant-ui/elements/tooltip-icon-button";
 import { useCopyToClipboard } from "@/hooks/use-copy-to-clipboard";
 import { cn } from "@/lib/utils";
@@ -24,6 +37,83 @@ const MarkdownTextImpl = () => {
       components={defaultComponents}
       defer
     />
+  );
+};
+
+const CITATION_HREF = /^\/api\/attachments\/([0-9a-f-]{36})\?page=(\d+)#page=(\d+)$/i;
+
+function parseCitation(href: string | undefined, label: string): CitationSource | undefined {
+  if (!href) return undefined;
+  const match = CITATION_HREF.exec(href);
+  if (!match || match[2] !== match[3]) return undefined;
+
+  const page = Number(match[2]);
+  if (page < 1) return undefined;
+  return {
+    id: match[1].toLowerCase(),
+    page,
+    title: label,
+    snippet: `Page ${page} in the attached file.`,
+    url: href,
+  };
+}
+
+function textContent(node: ReactNode): string {
+  return Children.toArray(node)
+    .map((child) => {
+      if (typeof child === "string" || typeof child === "number") return String(child);
+      if (isValidElement<{ children?: ReactNode }>(child)) {
+        return textContent(child.props.children);
+      }
+      return "";
+    })
+    .join("");
+}
+
+function citedSources(node: ReactNode): CitationSource[] {
+  const found: CitationSource[] = [];
+  Children.forEach(node, (child) => {
+    if (!isValidElement<{ source?: CitationSource; children?: ReactNode }>(child)) return;
+    if (child.type === CitedCitation && child.props.source) found.push(child.props.source);
+    else found.push(...citedSources(child.props.children));
+  });
+  return [...new Map(found.map((source) => [source.url, source])).values()];
+}
+
+const CitedLink: FC<ComponentProps<"a">> = ({ href, children, className, ...props }) => {
+  const source = parseCitation(href, textContent(children));
+  if (!source) {
+    return (
+      <a
+        href={href}
+        className={cn("aui-md-a text-primary hover:text-primary/80 underline underline-offset-2", className)}
+        {...props}
+      >
+        {children}
+      </a>
+    );
+  }
+
+  return <CitedCitation source={source} />;
+};
+
+const CitedCitation: FC<{ source: CitationSource }> = ({ source }) => (
+  <Citation index={source.page - 1} source={source} />
+);
+
+const MarkdownParagraph: FC<ComponentProps<"p">> = ({ children, className, ...props }) => {
+  if (textContent(children).trim().startsWith("Sources:")) {
+    const sources = citedSources(children);
+    if (sources.length > 0) return <Sources sources={sources} />;
+  }
+
+  return (
+    <InlineCitation
+      className={cn("aui-md-p my-3 leading-relaxed first:mt-0 last:mb-0", className)}
+      {...props}
+    >
+      {children}
+    </InlineCitation>
   );
 };
 
@@ -108,24 +198,8 @@ const defaultComponents = memoizeMarkdownComponents({
       {...props}
     />
   ),
-  p: ({ className, ...props }) => (
-    <p
-      className={cn(
-        "aui-md-p my-3 leading-relaxed first:mt-0 last:mb-0",
-        className,
-      )}
-      {...props}
-    />
-  ),
-  a: ({ className, ...props }) => (
-    <a
-      className={cn(
-        "aui-md-a text-primary hover:text-primary/80 underline underline-offset-2",
-        className,
-      )}
-      {...props}
-    />
-  ),
+  p: MarkdownParagraph,
+  a: CitedLink,
   blockquote: ({ className, ...props }) => (
     <blockquote
       className={cn(
