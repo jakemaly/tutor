@@ -18,7 +18,6 @@ with app.setup:
     import importlib.metadata as md
     import importlib.util
     import json
-    import os
     import shutil
     import subprocess
     import sys
@@ -50,7 +49,7 @@ def _(mo):
     mo.md(r"""
     ## Installation
 
-    One cell installs a single, consistent stack with the upstream pins (`transformers==4.57.6`, `trl==0.22.2`, `vllm==0.15.1`) and the CUDA 12.8 build of `torch==2.9.1` that `vllm==0.15.1` requires. Molab's GPU image ships a newer CUDA 13 torch that no vllm release compatible with `transformers==4.57.6` supports, so the stack is installed explicitly. It also removes a partial `flash_attn` (flash-attn 4) package if the image has one, because vllm 0.15.1 would try to import `flash_attn.ops` from it and fail. The install is skipped if everything is already at these versions. Installed versions are recorded in *Run provenance* below.
+    One cell installs a single, consistent stack with the upstream pins (`transformers==4.57.6`, `trl==0.22.2`, `vllm==0.15.1`) and the CUDA 12.8 build of `torch==2.9.1` that `vllm==0.15.1` requires. Molab's GPU image ships a newer CUDA 13 torch that no vllm release compatible with `transformers==4.57.6` supports, so the stack is installed explicitly. It is skipped if everything is already at these versions. Installed versions are recorded in *Run provenance* below.
     """)
     return
 
@@ -93,31 +92,7 @@ def _():
             _cmd = [sys.executable, "-m", "pip", "install", "--extra-index-url", "https://download.pytorch.org/whl/cu128"] + _requirements
         subprocess.run(_cmd, check=True)
 
-    # Molab's image can ship flash-attn 4, which installs a namespace package `flash_attn` that
-    # contains only `cute`. vllm 0.15.1 sees that `flash_attn` exists and then imports
-    # `flash_attn.ops`, which is missing, so loading the model fails. Remove such a partial
-    # `flash_attn`. A real flash-attn 2 (it has `flash_attn/ops`) is left alone.
-    def _flash_attn_is_partial():
-        _spec = importlib.util.find_spec("flash_attn")
-        if _spec is None:
-            return False
-        return not any(
-            os.path.isdir(os.path.join(_loc, "ops"))
-            for _loc in (_spec.submodule_search_locations or [])
-        )
-
     importlib.invalidate_caches()
-    if _flash_attn_is_partial():
-        _flash_dists = md.packages_distributions().get("flash_attn") or ["flash-attn-4"]
-        print(f"Removing partial flash_attn package: {_flash_dists}")
-        _uv_path = shutil.which("uv")
-        if _uv_path:
-            subprocess.run([_uv_path, "pip", "uninstall", "--python", sys.executable] + _flash_dists, check=True)
-        else:
-            subprocess.run([sys.executable, "-m", "pip", "uninstall", "-y"] + _flash_dists, check=True)
-        importlib.invalidate_caches()
-    assert not _flash_attn_is_partial(), "A partial flash_attn package is still importable; vllm will fail."
-
     deps_ready = all(_installed(_n).split("+")[0] == _v for _n, _v in _PINS.items()) and _installed("torch").endswith("+cu128")
     assert deps_ready, f"Unexpected versions after install: { {_n: _installed(_n) for _n in _PINS} }"
     return (deps_ready,)
@@ -145,6 +120,27 @@ def _(deps_ready):
     return FastLanguageModel, torch
 
 
+@app.cell
+def _(FastLanguageModel):
+    # Molab's image can ship a partial `flash_attn` (flash-attn 4 installs a namespace package with
+    # only `flash_attn.cute`). vllm 0.15.1 does `if find_spec("flash_attn"): import
+    # flash_attn.ops.triton.rotary`, so loading the model then fails with
+    # "No module named 'flash_attn.ops'". Test that exact import. If it fails, hide `flash_attn`
+    # from this process (a None entry in sys.modules makes find_spec return None), so vllm skips
+    # its optional flash_attn rotary kernel. A working flash-attn 2 passes the test and is left alone.
+    assert FastLanguageModel is not None  # run after unsloth has been imported
+    flash_attn_hidden = False
+    try:
+        importlib.import_module("flash_attn.ops.triton.rotary")
+    except ImportError:
+        flash_attn_hidden = importlib.util.find_spec("flash_attn") is not None
+        for module_name in [name for name in sys.modules if name == "flash_attn" or name.startswith("flash_attn.")]:
+            del sys.modules[module_name]
+        sys.modules["flash_attn"] = None
+        print("flash_attn is partial or broken here; hidden from vllm." if flash_attn_hidden else "flash_attn is not installed.")
+    return (flash_attn_hidden,)
+
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -154,7 +150,8 @@ def _(mo):
 
 
 @app.cell
-def _(FastLanguageModel):
+def _(FastLanguageModel, flash_attn_hidden):
+    assert flash_attn_hidden is not None  # run after the flash_attn guard above
     max_seq_length = 1024 # Can increase for longer reasoning traces
     lora_rank = 64 # Larger rank = smarter, but slower
 
