@@ -3,13 +3,13 @@
 # dependencies = [
 #     "marimo",
 #     "matplotlib",
-#     "unsloth",
-#     "uv",
+#     "unsloth==2026.10.11",
+#     "unsloth-zoo==2026.10.11",
 #     "vllm==0.15.1",
+#     "transformers==4.57.6",
+#     "trl==0.22.2",
+#     "torchao>=0.16.0,<0.18.0",
 # ]
-#
-# [tool.marimo.runtime]
-# on_cell_change = "lazy"
 # ///
 
 import marimo
@@ -20,11 +20,8 @@ app = marimo.App()
 with app.setup:
     # Standard-library imports shared by several cells.
     import html
-    import importlib
     import importlib.metadata as md
     import json
-    import platform
-    import shutil
     import subprocess
     import sys
     import tempfile
@@ -43,22 +40,9 @@ def _(mo):
     mo.md(r"""
     # GRPO on Qwen2.5-3B-Instruct (marimo / Molab port)
 
-    This notebook is a marimo port of the official Unsloth **Qwen2.5-3B GRPO** notebook
-    (<https://github.com/unslothai/notebooks>, pinned commit recorded in *Run provenance* below).
-    The original is licensed [LGPL-3.0](https://github.com/unslothai/notebooks?tab=LGPL-3.0-1-ov-file#readme);
-    Unsloth is at <https://unsloth.ai/>.
+    Marimo port of the official Unsloth Qwen2.5-3B GRPO notebook (<https://github.com/unslothai/notebooks>, commit recorded in *Run provenance* below). Licensed [LGPL-3.0](https://github.com/unslothai/notebooks?tab=LGPL-3.0-1-ov-file#readme); Unsloth: <https://unsloth.ai/>.
 
-    **Unchanged from upstream:** model, GSM8K data prep, the five reward functions, and the GRPO config (250 steps).
-
-    **Adapted for marimo / Molab:**
-    - Colab shell magics (`%%capture`, `!pip`) replaced by a plain Python install cell.
-    - `UNSLOTH_VLLM_STANDBY` is set in the same cell that imports `unsloth`, and `trl` is imported only after the model is loaded.
-    - Duplicate variable names across cells renamed (marimo requires unique global names).
-    - Training sits behind a run button so editing earlier cells never silently restarts the 250-step run.
-    - Disabled save / push / GGUF cells removed. The LoRA adapter and logs are written to a temp directory, not the repo.
-    - New cells: run provenance, tokenizer / chat-template demo, before/after generations, training logs, and reward plot.
-
-    **How to run:** run the cells top to bottom on a GPU runtime. Everything up to the training button is cheap; training only starts when you click the button.
+    The model, GSM8K data prep, reward functions and GRPO config (250 steps) are unchanged from upstream. Adaptations for marimo / Molab: dependencies pinned in the script header instead of `!pip`, unique variable names across cells, training behind a run button, and the LoRA / logs written outside the repo. Added: run provenance, before/after generations, and a reward plot.
     """)
     return
 
@@ -67,51 +51,10 @@ def _(mo):
 def _(mo):
     mo.md(r"""
     ## Installation
+
+    Dependencies are pinned in the script header at the top of this file (same pins as upstream: `transformers==4.57.6`, `trl==0.22.2`, `vllm==0.15.1`, plus `torchao<0.18`). Installed versions are recorded in *Run provenance* below.
     """)
     return
-
-
-@app.cell
-def _():
-    # Mirrors the non-Colab path of the upstream notebook:
-    #   pip install unsloth vllm
-    #   uv pip install transformers==4.57.6
-    #   uv pip install --no-deps trl==0.22.2
-    # Idempotent: anything already installed at the right version is skipped.
-    # If the default vllm does not support the Blackwell GPU, set a pin here
-    # (the upstream Colab non-T4 branch uses vllm==0.15.1).
-
-    _TRANSFORMERS_PIN = "4.57.6"
-    _TRL_PIN = "0.22.2"
-
-    def _installed(name):
-        try:
-            return md.version(name)
-        except md.PackageNotFoundError:
-            return None
-
-    _uv = shutil.which("uv")
-    if _uv:
-        _install = [_uv, "pip", "install", "-q", "--python", sys.executable]
-    else:
-        _install = [sys.executable, "-m", "pip", "install", "-q"]
-
-    if _installed("unsloth") is None or _installed("vllm") is None:
-        subprocess.run(_install + ["unsloth", "vllm"], check=True)
-    if _installed("transformers") != _TRANSFORMERS_PIN:
-        subprocess.run(_install + [f"transformers=={_TRANSFORMERS_PIN}"], check=True)
-    if _installed("trl") != _TRL_PIN:
-        subprocess.run(_install + ["--no-deps", f"trl=={_TRL_PIN}"], check=True)
-
-    importlib.invalidate_caches()
-    deps_ready = (
-        _installed("unsloth") is not None
-        and _installed("vllm") is not None
-        and _installed("transformers") == _TRANSFORMERS_PIN
-        and _installed("trl") == _TRL_PIN
-    )
-    assert deps_ready, "Dependency install did not finish with the pinned versions."
-    return (deps_ready,)
 
 
 @app.cell(hide_code=True)
@@ -123,12 +66,11 @@ def _(mo):
 
 
 @app.cell
-def _(deps_ready):
+def _():
     # UNSLOTH_VLLM_STANDBY must be set before unsloth is imported, and unsloth must be
     # imported before trl / transformers / peft. Keeping both in one cell guarantees that.
     import os as _os
 
-    assert deps_ready
     _os.environ["UNSLOTH_VLLM_STANDBY"] = "1"  # [NEW] Extra 30% context lengths!
     from unsloth import FastLanguageModel, is_bfloat16_supported
     import torch
@@ -175,10 +117,10 @@ def _(FastLanguageModel):
 @app.cell
 def _(mo, model, torch):
     # Run provenance: source commit, model revision, dependency versions, GPU details.
-
+    assert model is not None  # run after the model has been downloaded and loaded
     UPSTREAM_REPO = "https://github.com/unslothai/notebooks"
     UPSTREAM_NOTEBOOK = "nb/Qwen2.5_(3B)-GRPO.ipynb"  # path inside the upstream repo (check against the assignment link)
-    UPSTREAM_COMMIT = "c55d0eccc722a7754036a447bdd5cd83499d4350"  # copy from the assignment link
+    UPSTREAM_COMMIT = "REPLACE_WITH_PINNED_COMMIT_SHA"  # copy from the assignment link
     BASE_MODEL = "unsloth/Qwen2.5-3B-Instruct"
 
     def _run(cmd, cwd=None):
@@ -196,50 +138,24 @@ def _(mo, model, torch):
 
     _nb_dir = mo.notebook_dir()
     _tutor_commit = _run(["git", "rev-parse", "HEAD"], cwd=_nb_dir) if _nb_dir else "unavailable"
-
-    _key_pkgs = [
-        "torch", "transformers", "trl", "unsloth", "unsloth_zoo", "vllm", "peft",
-        "bitsandbytes", "xformers", "triton", "datasets", "accelerate", "numpy", "marimo",
-    ]
+    _key_pkgs = ["torch", "transformers", "trl", "unsloth", "unsloth_zoo", "vllm", "peft", "bitsandbytes", "datasets"]
     _versions = {_p: _ver(_p) for _p in _key_pkgs}
     _all_pkgs = sorted(f"{_d.metadata['Name']}=={_d.version}" for _d in md.distributions())
 
-    _gpu = {}
-    if torch.cuda.is_available():
-        _props = torch.cuda.get_device_properties(0)
-        _gpu = {
-            "name": _props.name,
-            "compute_capability": f"{_props.major}.{_props.minor}",
-            "total_memory_gb": round(_props.total_memory / 1024**3, 1),
-            "torch_cuda": torch.version.cuda,
-        }
-    _smi = _run(["nvidia-smi"])
+    _props = torch.cuda.get_device_properties(0)
+    _gpu = f"{_props.name}, compute capability {_props.major}.{_props.minor}, {_props.total_memory / 1024**3:.1f} GB, CUDA {torch.version.cuda}"
 
     # The 4-bit load may resolve to a pre-quantized Unsloth repo, so list every cached Qwen2.5-3B-Instruct repo.
     try:
         from huggingface_hub import scan_cache_dir as _scan_cache_dir
 
-        _cached_models = {
-            _r.repo_id: sorted(_rev.commit_hash for _rev in _r.revisions)
+        _revisions = {
+            _r.repo_id: sorted(_v.commit_hash for _v in _r.revisions)
             for _r in _scan_cache_dir().repos
             if "qwen2.5-3b-instruct" in _r.repo_id.lower()
         }
     except Exception as _e:
-        _cached_models = {"error": str(_e)}
-
-    provenance = {
-        "upstream_repo": UPSTREAM_REPO,
-        "upstream_notebook": UPSTREAM_NOTEBOOK,
-        "upstream_commit": UPSTREAM_COMMIT,
-        "tutor_repo_commit": _tutor_commit,
-        "base_model": BASE_MODEL,
-        "model_name_or_path": str(getattr(model.config, "_name_or_path", "unknown")),
-        "model_cache_revisions": _cached_models,
-        "python": sys.version.split()[0],
-        "platform": platform.platform(),
-        "gpu": _gpu,
-        "key_package_versions": _versions,
-    }
+        _revisions = f"unavailable ({_e})"
 
     _pre = lambda s: mo.Html(f"<pre style='white-space:pre-wrap;font-size:12px'>{html.escape(s)}</pre>")
     mo.vstack([
@@ -247,18 +163,16 @@ def _(mo, model, torch):
         mo.md(f"""
     - **Upstream source:** [{UPSTREAM_REPO}]({UPSTREAM_REPO}), notebook `{UPSTREAM_NOTEBOOK}`, commit `{UPSTREAM_COMMIT}`
     - **This repo commit (tutor):** `{_tutor_commit}`
-    - **Base model:** `{BASE_MODEL}` (loaded as `{provenance['model_name_or_path']}`)
-    - **Cached model revisions:** `{_cached_models}`
-    - **Python / platform:** {provenance['python']} / {provenance['platform']}
+    - **Base model:** `{BASE_MODEL}`, cached revisions: `{_revisions}`
     - **GPU:** {_gpu}
     - **Key packages:** {_versions}
         """),
         mo.accordion({
-            "nvidia-smi": _pre(_smi),
+            "nvidia-smi": _pre(_run(["nvidia-smi"])),
             f"All installed packages ({len(_all_pkgs)})": _pre("\n".join(_all_pkgs)),
         }),
     ])
-    return (provenance,)
+    return
 
 
 @app.cell(hide_code=True)
@@ -353,6 +267,7 @@ def _():
         xmlcount_reward_func,
     )
 
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -381,14 +296,12 @@ def _(SYSTEM_PROMPT, extract_hash_answer, tokenizer):
             "messages": [{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": _strawberry}],
             "gold": "3",
         },
+        {
+            "label": "GSM8K test question",
+            "messages": [{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": _test[0]["question"]}],
+            "gold": extract_hash_answer(_test[0]["answer"]),
+        },
     ]
-    for _k in range(3):
-        eval_cases.append({
-            "label": f"GSM8K test #{_k}",
-            "messages": [{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": _test[_k]["question"]}],
-            "gold": extract_hash_answer(_test[_k]["answer"]),
-        })
-
     eval_texts = [
         tokenizer.apply_chat_template(_c["messages"], tokenize=False, add_generation_prompt=True)
         for _c in eval_cases
@@ -516,6 +429,7 @@ def _(
     _log_dir.mkdir(parents=True, exist_ok=True)
     training_log_path = _log_dir / "training_log_history.json"
     training_log_path.write_text(json.dumps(log_history, indent=2, default=str))
+    mo.md(f"Training finished. Log history saved to `{training_log_path}` (outside the repo).")
     return log_history, training_log_path
 
 
@@ -528,55 +442,26 @@ def _(mo):
 
 
 @app.cell
-def _(log_history, training_log_path):
+def _(log_history):
     import matplotlib.pyplot as _plt
 
     _rows = [_r for _r in log_history if "reward" in _r]
     _steps = [_r["step"] for _r in _rows]
-
-    def _smooth(values, window=10):
-        _out = []
-        for _j in range(len(values)):
-            _chunk = values[max(0, _j - window + 1): _j + 1]
-            _out.append(sum(_chunk) / len(_chunk))
-        return _out
-
-    _fig, (_ax1, _ax2) = _plt.subplots(1, 2, figsize=(13, 4))
     _reward = [_r["reward"] for _r in _rows]
-    _ax1.plot(_steps, _reward, alpha=0.3, label="reward (per step)")
-    _ax1.plot(_steps, _smooth(_reward), label="rolling mean (10 steps)")
-    _ax1.set_xlabel("step")
-    _ax1.set_ylabel("total reward")
-    _ax1.set_title("GRPO reward trace")
-    _ax1.legend()
+    _smooth = [
+        sum(_reward[max(0, _j - 9): _j + 1]) / len(_reward[max(0, _j - 9): _j + 1])
+        for _j in range(len(_reward))
+    ]
 
-    _per_func = [_k for _k in (_rows[0] if _rows else {}) if _k.startswith("rewards/") and _k.endswith("/mean")]
-    for _k in _per_func:
-        _ax2.plot(_steps, _smooth([_r[_k] for _r in _rows]), label=_k.split("/")[1])
-    _ax2.set_xlabel("step")
-    _ax2.set_ylabel("mean reward (rolling, 10 steps)")
-    _ax2.set_title("Per reward function")
-    if _per_func:
-        _ax2.legend(fontsize=7)
+    _fig, _ax = _plt.subplots(figsize=(8, 4))
+    _ax.plot(_steps, _reward, alpha=0.3, label="reward (per step)")
+    _ax.plot(_steps, _smooth, label="rolling mean (10 steps)")
+    _ax.set_xlabel("step")
+    _ax.set_ylabel("total reward")
+    _ax.set_title("GRPO reward trace")
+    _ax.legend()
     _fig.tight_layout()
     _fig
-    return
-
-
-@app.cell
-def _(log_history, mo, training_log_path):
-    _cols = ["step", "loss", "reward", "reward_std", "completion_length", "kl", "learning_rate"]
-    _table_rows = [{_c: _r.get(_c) for _c in _cols} for _r in log_history if "reward" in _r]
-    _first = [_r["reward"] for _r in _table_rows[:10]]
-    _last = [_r["reward"] for _r in _table_rows[-10:]]
-    mo.vstack([
-        mo.md(
-            f"Mean total reward over the first 10 logged steps: **{sum(_first) / max(len(_first), 1):.3f}**; "
-            f"over the last 10: **{sum(_last) / max(len(_last), 1):.3f}**. "
-            f"Full log history saved to `{training_log_path}` (not part of the repo)."
-        ),
-        mo.ui.table(_table_rows, page_size=10),
-    ])
     return
 
 
