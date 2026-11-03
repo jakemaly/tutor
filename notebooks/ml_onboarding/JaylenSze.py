@@ -3,12 +3,6 @@
 # dependencies = [
 #     "marimo",
 #     "matplotlib",
-#     "unsloth==2026.10.11",
-#     "unsloth-zoo==2026.10.11",
-#     "vllm==0.15.1",
-#     "transformers==4.57.6",
-#     "trl==0.22.2",
-#     "torchao>=0.16.0,<0.18.0",
 # ]
 # ///
 
@@ -20,8 +14,10 @@ app = marimo.App()
 with app.setup:
     # Standard-library imports shared by several cells.
     import html
+    import importlib
     import importlib.metadata as md
     import json
+    import shutil
     import subprocess
     import sys
     import tempfile
@@ -52,9 +48,53 @@ def _(mo):
     mo.md(r"""
     ## Installation
 
-    Dependencies are pinned in the script header at the top of this file (same pins as upstream: `transformers==4.57.6`, `trl==0.22.2`, `vllm==0.15.1`, plus `torchao<0.18`). Installed versions are recorded in *Run provenance* below.
+    One cell installs a single, consistent stack with the upstream pins (`transformers==4.57.6`, `trl==0.22.2`, `vllm==0.15.1`) and the CUDA 12.8 build of `torch==2.9.1` that `vllm==0.15.1` requires. Molab's GPU image ships a newer CUDA 13 torch that no vllm release compatible with `transformers==4.57.6` supports, so the stack is installed explicitly. It is skipped if everything is already at these versions. Installed versions are recorded in *Run provenance* below.
     """)
     return
+
+
+@app.cell
+def _():
+    # Molab's GPU image has torch 2.14.1+cu130. vllm 0.15.1 (the newest vllm that accepts
+    # transformers 4.57.6) needs torch 2.9.1 built for CUDA 12, so install everything in ONE
+    # resolve with the cu128 torch backend. Must run before torch / unsloth are imported.
+    _PINS = {
+        "torch": "2.9.1",
+        "transformers": "4.57.6",
+        "trl": "0.22.2",
+        "vllm": "0.15.1",
+        "unsloth": "2026.10.11",
+        "unsloth_zoo": "2026.10.11",
+    }
+
+    def _installed(name):
+        try:
+            return md.version(name)
+        except md.PackageNotFoundError:
+            return ""
+
+    _ok = all(_installed(_n).split("+")[0] == _v for _n, _v in _PINS.items()) and _installed("torch").endswith("+cu128")
+    if not _ok:
+        _requirements = [
+            "torch==2.9.1",
+            "transformers==4.57.6",
+            "trl==0.22.2",
+            "vllm==0.15.1",
+            "unsloth==2026.10.11",
+            "unsloth-zoo==2026.10.11",
+            "torchao>=0.16.0,<0.18.0",
+        ]
+        _uv = shutil.which("uv")
+        if _uv:
+            _cmd = [_uv, "pip", "install", "--python", sys.executable, "--torch-backend", "cu128"] + _requirements
+        else:
+            _cmd = [sys.executable, "-m", "pip", "install", "--extra-index-url", "https://download.pytorch.org/whl/cu128"] + _requirements
+        subprocess.run(_cmd, check=True)
+
+    importlib.invalidate_caches()
+    deps_ready = all(_installed(_n).split("+")[0] == _v for _n, _v in _PINS.items()) and _installed("torch").endswith("+cu128")
+    assert deps_ready, f"Unexpected versions after install: { {_n: _installed(_n) for _n in _PINS} }"
+    return (deps_ready,)
 
 
 @app.cell(hide_code=True)
@@ -66,11 +106,12 @@ def _(mo):
 
 
 @app.cell
-def _():
+def _(deps_ready):
     # UNSLOTH_VLLM_STANDBY must be set before unsloth is imported, and unsloth must be
     # imported before trl / transformers / peft. Keeping both in one cell guarantees that.
     import os as _os
 
+    assert deps_ready  # the install cell must finish before unsloth is imported
     _os.environ["UNSLOTH_VLLM_STANDBY"] = "1"  # [NEW] Extra 30% context lengths!
     from unsloth import FastLanguageModel, is_bfloat16_supported
     import torch
