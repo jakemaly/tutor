@@ -5,7 +5,7 @@
 #     "matplotlib",
 #     "unsloth",
 #     "uv",
-#     "vllm",
+#     "vllm==0.15.1",
 # ]
 #
 # [tool.marimo.runtime]
@@ -352,32 +352,6 @@ def _():
         strict_format_reward_func,
         xmlcount_reward_func,
     )
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    ## Chat template and tokenization demo
-    """)
-    return
-
-
-@app.cell
-def _(dataset, mo, tokenizer):
-
-    _example = dataset[0]
-    _text = tokenizer.apply_chat_template(_example["prompt"], tokenize=False, add_generation_prompt=True)
-    _ids = tokenizer(_text, add_special_tokens=False)["input_ids"]
-    _tokens = tokenizer.convert_ids_to_tokens(_ids[:40])
-    _pre = lambda s: mo.Html(f"<pre style='white-space:pre-wrap;font-size:12px'>{html.escape(s)}</pre>")
-    mo.vstack([
-        mo.md("**Messages rendered by the chat template** (this exact string is what gets tokenized):"),
-        _pre(_text),
-        mo.md(f"**Tokenization:** {len(_ids)} tokens in total. The first 40 pieces:"),
-        _pre(" | ".join(_tokens)),
-    ])
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
