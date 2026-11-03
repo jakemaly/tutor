@@ -16,7 +16,9 @@ with app.setup:
     import html
     import importlib
     import importlib.metadata as md
+    import importlib.util
     import json
+    import os
     import shutil
     import subprocess
     import sys
@@ -48,7 +50,7 @@ def _(mo):
     mo.md(r"""
     ## Installation
 
-    One cell installs a single, consistent stack with the upstream pins (`transformers==4.57.6`, `trl==0.22.2`, `vllm==0.15.1`) and the CUDA 12.8 build of `torch==2.9.1` that `vllm==0.15.1` requires. Molab's GPU image ships a newer CUDA 13 torch that no vllm release compatible with `transformers==4.57.6` supports, so the stack is installed explicitly. It is skipped if everything is already at these versions. Installed versions are recorded in *Run provenance* below.
+    One cell installs a single, consistent stack with the upstream pins (`transformers==4.57.6`, `trl==0.22.2`, `vllm==0.15.1`) and the CUDA 12.8 build of `torch==2.9.1` that `vllm==0.15.1` requires. Molab's GPU image ships a newer CUDA 13 torch that no vllm release compatible with `transformers==4.57.6` supports, so the stack is installed explicitly. It also removes a partial `flash_attn` (flash-attn 4) package if the image has one, because vllm 0.15.1 would try to import `flash_attn.ops` from it and fail. The install is skipped if everything is already at these versions. Installed versions are recorded in *Run provenance* below.
     """)
     return
 
@@ -91,7 +93,31 @@ def _():
             _cmd = [sys.executable, "-m", "pip", "install", "--extra-index-url", "https://download.pytorch.org/whl/cu128"] + _requirements
         subprocess.run(_cmd, check=True)
 
+    # Molab's image can ship flash-attn 4, which installs a namespace package `flash_attn` that
+    # contains only `cute`. vllm 0.15.1 sees that `flash_attn` exists and then imports
+    # `flash_attn.ops`, which is missing, so loading the model fails. Remove such a partial
+    # `flash_attn`. A real flash-attn 2 (it has `flash_attn/ops`) is left alone.
+    def _flash_attn_is_partial():
+        _spec = importlib.util.find_spec("flash_attn")
+        if _spec is None:
+            return False
+        return not any(
+            os.path.isdir(os.path.join(_loc, "ops"))
+            for _loc in (_spec.submodule_search_locations or [])
+        )
+
     importlib.invalidate_caches()
+    if _flash_attn_is_partial():
+        _flash_dists = md.packages_distributions().get("flash_attn") or ["flash-attn-4"]
+        print(f"Removing partial flash_attn package: {_flash_dists}")
+        _uv_path = shutil.which("uv")
+        if _uv_path:
+            subprocess.run([_uv_path, "pip", "uninstall", "--python", sys.executable] + _flash_dists, check=True)
+        else:
+            subprocess.run([sys.executable, "-m", "pip", "uninstall", "-y"] + _flash_dists, check=True)
+        importlib.invalidate_caches()
+    assert not _flash_attn_is_partial(), "A partial flash_attn package is still importable; vllm will fail."
+
     deps_ready = all(_installed(_n).split("+")[0] == _v for _n, _v in _PINS.items()) and _installed("torch").endswith("+cu128")
     assert deps_ready, f"Unexpected versions after install: { {_n: _installed(_n) for _n in _PINS} }"
     return (deps_ready,)
@@ -471,7 +497,7 @@ def _(
     training_log_path = _log_dir / "training_log_history.json"
     training_log_path.write_text(json.dumps(log_history, indent=2, default=str))
     mo.md(f"Training finished. Log history saved to `{training_log_path}` (outside the repo).")
-    return log_history, training_log_path
+    return (log_history,)
 
 
 @app.cell(hide_code=True)
