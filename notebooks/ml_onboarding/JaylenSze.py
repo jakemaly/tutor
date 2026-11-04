@@ -9,7 +9,7 @@
 import marimo
 
 __generated_with = "0.25.2"
-app = marimo.App()
+app = marimo.App(auto_download=["html"])
 
 with app.setup:
     # Standard-library imports shared by several cells.
@@ -108,12 +108,10 @@ def _(mo):
 
 @app.cell
 def _(deps_ready):
-    # UNSLOTH_VLLM_STANDBY must be set before unsloth is imported, and unsloth must be
-    # imported before trl / transformers / peft. Keeping both in one cell guarantees that.
     import os as _os
-
-    assert deps_ready  # the install cell must finish before unsloth is imported
-    _os.environ["UNSLOTH_VLLM_STANDBY"] = "1"  # [NEW] Extra 30% context lengths!
+    assert deps_ready
+    _os.environ["UNSLOTH_VLLM_STANDBY"] = "1"
+    _os.environ["UNSLOTH_VLLM_NO_FLASHINFER"] = "1"
     from unsloth import FastLanguageModel, is_bfloat16_supported
     import torch
 
