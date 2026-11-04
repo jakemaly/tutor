@@ -182,7 +182,7 @@ def _(mo, model, torch):
     assert model is not None  # run after the model has been downloaded and loaded
     UPSTREAM_REPO = "https://github.com/unslothai/notebooks"
     UPSTREAM_NOTEBOOK = "nb/Qwen2.5_(3B)-GRPO.ipynb"  # path inside the upstream repo (check against the assignment link)
-    UPSTREAM_COMMIT = "REPLACE_WITH_PINNED_COMMIT_SHA"  # copy from the assignment link
+    UPSTREAM_COMMIT = "c55d0eccc722a7754036a447bdd5cd83499d4350"  # copy from the assignment link
     BASE_MODEL = "unsloth/Qwen2.5-3B-Instruct"
 
     def _run(cmd, cwd=None):
