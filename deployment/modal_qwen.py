@@ -28,6 +28,8 @@ image = (
         "setuptools>=77.0.3,<81",
     )
     .env({
+        "CC": "/usr/bin/gcc",
+        "CXX": "/usr/bin/g++",
         "TORCH_CUDA_ARCH_LIST": "8.9",
         "MAX_JOBS": "2",
     })
@@ -36,6 +38,12 @@ image = (
         "git+https://github.com/vllm-project/vllm-gguf-plugin.git"
         f"@{GGUF_PLUGIN_REVISION}",
         extra_options="--no-build-isolation",
+    )
+    .run_commands(
+        # Compatibility fix for vLLM 0.32.0 (GGUF plugin PR #148).
+        r"sed -i -E 's/^from vllm\.transformers_utils\.configs\.qwen3_5(_moe)? import /from transformers import /' "
+        "/usr/local/lib/python3.12/site-packages/vllm_gguf_plugin/weights_adapter/qwen3_5.py",
+        "python -c 'from vllm_gguf_plugin import register'",
     )
 )
 
@@ -47,7 +55,7 @@ model_cache = modal.Volume.from_name(
 
 @app.function(
     image=image.env({"HF_HOME": "/cache/huggingface"}),
-    gpu="L4",
+    gpu=["L4", "L40S"],
     cpu=2,
     memory=16384,
     volumes={"/cache": model_cache},
@@ -91,6 +99,8 @@ def serve():
         "--max-num-seqs", "4",
         "--gpu-memory-utilization", "0.85",
         "--reasoning-parser", "qwen3",
+        "--default-chat-template-kwargs", '{"enable_thinking": false}',
+        "--override-generation-config", '{"max_new_tokens": 512}',
         "--enforce-eager",
     ]
 
