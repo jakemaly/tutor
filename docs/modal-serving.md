@@ -1,12 +1,12 @@
-\# Serve Qwen3.5-9B on Modal
+# Serve Qwen3.5-9B on Modal
 
 
 
-This deployment serves Unsloth’s Qwen3.5-9B Q4\_K\_M checkpoint through vLLM. The tutor connects to it through an authenticated OpenAI-compatible endpoint.
+This deployment serves Unsloth’s Qwen3.5-9B Q4_K_M checkpoint through vLLM. The tutor connects to it through an authenticated OpenAI-compatible endpoint.
 
 
 
-\## Start the deployment
+## Start the deployment
 
 
 
@@ -18,9 +18,9 @@ From the repository root in PowerShell, set up Modal once:
 
 python -m venv deployment/.venv
 
-.\\deployment\\.venv\\Scripts\\python.exe -m pip install modal==1.6.3
+.\deployment\.venv\Scripts\python.exe -m pip install modal==1.6.3
 
-.\\deployment\\.venv\\Scripts\\python.exe -m modal setup
+.\deployment\.venv\Scripts\python.exe -m modal setup
 
 ```
 
@@ -32,13 +32,13 @@ Set a $30 workspace usage limit in Modal before deploying. Then run:
 
 ```powershell
 
-.\\deployment\\.venv\\Scripts\\python.exe -m modal deploy deployment/modal\_qwen.py
+.\deployment\.venv\Scripts\python.exe -m modal deploy deployment/modal_qwen.py
 
 ```
 
 
 
-\## Connect the tutor
+## Connect the tutor
 
 
 
@@ -48,11 +48,11 @@ Create a proxy token in the Modal dashboard. Use the endpoint URL printed by the
 
 ```dotenv
 
-LLM\_BASE\_URL=https://YOUR-MODAL-ENDPOINT/v1
+LLM_BASE_URL=https://YOUR-MODAL-ENDPOINT/v1
 
-LLM\_MODEL=socratic-tutor
+LLM_MODEL=socratic-tutor
 
-LLM\_API\_KEY=YOUR\_PROXY\_TOKEN\_ID.YOUR\_PROXY\_TOKEN\_SECRET
+LLM_API_KEY=YOUR_PROXY_TOKEN_ID.YOUR_PROXY_TOKEN_SECRET
 
 ```
 
@@ -62,7 +62,7 @@ Start Docker Desktop, then run `docker compose up -d --build`. Open http://local
 
 
 
-\## Stop the deployment
+## Stop the deployment
 
 
 
@@ -72,7 +72,7 @@ When finished testing, run:
 
 ```powershell
 
-.\\deployment\\.venv\\Scripts\\python.exe -m modal app stop socratic-tutor-qwen
+.\deployment\.venv\Scripts\python.exe -m modal app stop socratic-tutor-qwen
 
 ```
 
@@ -82,7 +82,7 @@ Run `docker compose stop` to stop the local tutor.
 
 
 
-\## Verification
+## Verification
 
 
 
