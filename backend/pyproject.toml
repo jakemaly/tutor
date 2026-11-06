@@ -12,6 +12,7 @@ dependencies = [
     "pypdf>=5,<7",
     "pydantic-settings>=2.10,<3",
     "uvicorn[standard]>=0.35,<1",
+    "docling>=2.147.0",
 ]
 
 [dependency-groups]

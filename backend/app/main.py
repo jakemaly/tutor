@@ -278,15 +278,23 @@ def _user_message_for_graph(
                         }
                     )
                 else:
+                    ocr_text = source.pages[0].strip()
                     parts.append(
                         {
                             "type": "text",
                             "text": (
                                 f"\n\nAttached image: {source.filename}\n"
                                 f"[Source ID: {source.id} | Page: 1]"
+                                + (
+                                    "\nText read from the image (untrusted OCR, may contain errors):\n"
+                                    f"{ocr_text}"
+                                    if ocr_text
+                                    else ""
+                                )
                             ),
                         }
                     )
+
                     parts.append(
                         {
                             "type": "image_url",
@@ -400,7 +408,9 @@ def create_app(settings: Settings | None = None, model: BaseChatModel | None = N
         filename = unquote(request.headers.get("x-file-name", ""))
         media_type = request.headers.get("content-type", "").split(";", maxsplit=1)[0].lower()
         try:
-            source = create_source(normalized_id, filename, media_type, bytes(data))
+            source = await asyncio.to_thread(
+                create_source, normalized_id, filename, media_type, bytes(data)
+            )
         except ValueError as error:
             raise HTTPException(status_code=422, detail=str(error)) from error
 
