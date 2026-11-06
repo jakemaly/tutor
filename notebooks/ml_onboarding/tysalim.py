@@ -6,7 +6,7 @@
 #     "huggingface_hub",
 #     "marimo",
 #     "matplotlib",
-#     "transformers==4.57.6",
+#     "transformers>=5.5.3,<=5.17.0",
 #     "trl==0.22.2",
 #     "unsloth",
 #     "vllm",
@@ -120,7 +120,9 @@ def _():
     os.environ["UNSLOTH_VLLM_STANDBY"] = "1"
     os.environ.setdefault("HF_HUB_ENABLE_HF_TRANSFER", "1")
 
-    # Match the pinned notebook's non-Colab + version pins (transformers/trl).
+    # Molab ships vLLM 0.26, which Unsloth will disable unless transformers>=5.
+    # Keep trl 0.22.2 so GRPOConfig matches the pinned notebook; only the
+    # transformers pin is lifted so fast_inference / use_vllm still work.
     subprocess.check_call(
         [
             sys.executable,
@@ -133,10 +135,8 @@ def _():
             "datasets",
             "matplotlib",
             "huggingface_hub",
+            "transformers>=5.5.3,<=5.17.0",
         ]
-    )
-    subprocess.check_call(
-        [sys.executable, "-m", "pip", "install", "-q", "transformers==4.57.6"]
     )
     subprocess.check_call(
         [sys.executable, "-m", "pip", "install", "-q", "--no-deps", "trl==0.22.2"]
