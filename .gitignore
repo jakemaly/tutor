@@ -20,3 +20,10 @@ frontend/dist/
 # Build output
 build/
 dist/
+
+# ML training artifacts (do not commit weights or checkpoints)
+outputs/
+**/grpo_saved_lora/
+*.safetensors
+*.gguf
+wandb/
