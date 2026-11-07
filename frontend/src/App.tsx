@@ -9,18 +9,12 @@ export default function App() {
 
   return (
     <main className="app-shell">
-      <header className="topbar">
-        <a className="brand" href="/" aria-label="Tutor home">Tutor</a>
-        <button className="new-chat-button" onClick={() => setSession((value) => value + 1)}>
-          <span aria-hidden="true">＋</span> New chat
-        </button>
-      </header>
-      <ChatSession key={session} />
+      <ChatSession key={session} onNewChat={() => setSession((value) => value + 1)} />
     </main>
   );
 }
 
-function ChatSession() {
+function ChatSession({ onNewChat }: { onNewChat: () => void }) {
   const [error, setError] = useState<string | null>(null);
   const runtime = useDataStreamRuntime({
     api: "/api/chat",
@@ -40,7 +34,7 @@ function ChatSession() {
             <button className="error-dismiss" onClick={() => setError(null)} aria-label="Dismiss error">×</button>
           </div>
         )}
-        <Thread />
+        <Thread onNewChat={onNewChat} />
       </section>
     </AssistantRuntimeProvider>
   );
