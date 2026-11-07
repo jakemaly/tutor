@@ -81,9 +81,9 @@ Teal and coral identify the TMI mark; they are not tutor/student role colors or 
 
 ### Typography
 
-| Figma text style | Font | Size / line height | Tracking | Use |
-|---|---|---:|---:|---|
-| `TMI/Display/Home` | Alike Regular | 66 / 82.5 px | -1.5 px | Home heading |
+| Figma text style | Font | Size / line height | Use |
+|---|---|---:|---|
+| `TMI/Display/Home` | Alike Regular | 66 / 82.5 px | Home heading |
 | `TMI/Body/Tutor` | SF Pro Regular | 19 / 29 px | Tutor response |
 | `TMI/Body/Student` | SF Pro Regular | 16 / 22 px | Student message |
 | `TMI/Composer/Placeholder` | SF Pro Regular | 22 / 31 px | Composer placeholder |
@@ -95,7 +95,7 @@ Teal and coral identify the TMI mark; they are not tutor/student role colors or 
 | `TMI/Meta/Action` | SF Pro Regular | 14 / 20 px | Message actions |
 | `TMI/Meta/Disclaimer` | SF Pro Regular | 12 / 16 px | Accuracy note |
 
-The web app self-hosts Alike for the display face under the SIL Open Font License 1.1. The font’s copyright notice and full license are reproduced in the appendix below. Conversation UI uses the native system sans-serif stack, which resolves to SF Pro on Apple platforms and an equivalent platform UI font elsewhere. Equations and code use a monospace face only where their content requires it.
+The web app self-hosts Alike for the display face under the SIL Open Font License 1.1. The font’s copyright notice and full license are reproduced in the appendix below. Conversation UI uses the native system sans-serif stack, which resolves to SF Pro on Apple platforms, Segoe UI on Windows, and `system-ui` on Linux. Equations and code use a monospace face only where their content requires it.
 
 ### Layout and shape
 

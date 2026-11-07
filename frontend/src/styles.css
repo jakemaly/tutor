@@ -118,7 +118,7 @@ html, body, #root { width: 100%; min-width: 320px; height: 100%; margin: 0; }
   font-size: var(--type-size-display);
   font-weight: 400;
   line-height: var(--type-line-display);
-  letter-spacing: var(--type-tracking-display);
+  letter-spacing: -0.035em;
 }
 
 .aui-composer-root { width: 100%; }
