@@ -6,10 +6,11 @@
 #     "huggingface_hub",
 #     "marimo",
 #     "matplotlib",
+#     "nvidia-cutlass-dsl==4.6.0",
 #     "transformers>=5.5.3,<=5.17.0",
 #     "trl==0.22.2",
 #     "unsloth",
-#     "vllm",
+#     "vllm==0.26.0",
 # ]
 # ///
 """Marimo recreation of Unsloth's pinned Qwen2.5-3B GRPO notebook for issue #21.
@@ -71,14 +72,17 @@ def _(mo):
            [Molab](https://molab.marimo.io) as a GitHub-synced notebook
            ([guide](https://docs.marimo.io/guides/molab/)).
         2. Attach a free **NVIDIA RTX Pro 6000 Blackwell** in notebook specs.
-        3. **Run all**. Stay active: Molab stops idle sessions after 90 minutes.
+        3. If Molab shows `Failed to fetch dynamically imported module`
+           (`sb.molab.run/@file/...js`), the sandbox already died. Close the
+           tab, start a **new** GPU session from GitHub, then Run all.
+        4. **Run all**. Stay active: Molab stops idle sessions after 90 minutes.
            Unsloth warns that reward may stay near 0 for ~100 steps.
-        4. Confirm the provenance table filled, the reward plot rose after the
+        5. Confirm the provenance table filled, the reward plot rose after the
            early plateau, and before/after generations rendered.
-        5. Commit `tysalim_run_metrics.json` if that file was written next to
+        6. Commit `tysalim_run_metrics.json` if that file was written next to
            this notebook. Do **not** commit `outputs/`, `grpo_saved_lora/`,
            `.safetensors`, or GGUF files.
-        6. Open a PR from `ml-onboarding-TylerLim` into `dev`.
+        7. Open a PR from `ml-onboarding-TylerLim` into `dev`.
         """
     )
     return
@@ -119,10 +123,13 @@ def _():
 
     os.environ["UNSLOTH_VLLM_STANDBY"] = "1"
     os.environ.setdefault("HF_HUB_ENABLE_HF_TRANSFER", "1")
+    os.environ["PIP_CACHE_DIR"] = "/tmp/pip-cache"
+    os.environ["PIP_DISABLE_PIP_VERSION_CHECK"] = "1"
 
-    # Molab ships vLLM 0.26, which Unsloth will disable unless transformers>=5.
-    # Keep trl 0.22.2 so GRPOConfig matches the pinned notebook; only the
-    # transformers pin is lifted so fast_inference / use_vllm still work.
+    # Molab / Unsloth can leave nvidia-cutlass-dsl too old for Blackwell
+    # (OperandMajorMode lives on cutlass.cute.nvgpu from 4.5+). Pin the
+    # vLLM 0.26 cutlass wheel after unsloth so fast_inference can start.
+    # Keep trl 0.22.2 so GRPOConfig matches the pinned notebook.
     subprocess.check_call(
         [
             sys.executable,
@@ -131,11 +138,33 @@ def _():
             "install",
             "-q",
             "unsloth",
-            "vllm",
+            "vllm==0.26.0",
             "datasets",
             "matplotlib",
             "huggingface_hub",
             "transformers>=5.5.3,<=5.17.0",
+        ]
+    )
+    subprocess.check_call(
+        [
+            sys.executable,
+            "-m",
+            "pip",
+            "uninstall",
+            "-y",
+            "nvidia-cutlass-dsl",
+        ]
+    )
+    subprocess.check_call(
+        [
+            sys.executable,
+            "-m",
+            "pip",
+            "install",
+            "-q",
+            "--force-reinstall",
+            "--no-cache-dir",
+            "nvidia-cutlass-dsl==4.6.0",
         ]
     )
     subprocess.check_call(
@@ -274,6 +303,29 @@ def _(mo):
 
 @app.cell
 def _(MODEL_NAME, torch):
+    def _patch_cutlass_operand_major_mode() -> None:
+        """vLLM 0.26 expects OperandMajorMode on cutlass.cute.nvgpu; older
+        wheels only expose it under tcgen05. Alias if needed."""
+        try:
+            import cutlass.cute.nvgpu as nvgpu
+        except ImportError:
+            return
+        if hasattr(nvgpu, "OperandMajorMode"):
+            return
+        for src in (
+            "cutlass.cute.nvgpu.tcgen05",
+            "cutlass.cute.nvgpu.tcgen05.mma",
+        ):
+            try:
+                mod = __import__(src, fromlist=["OperandMajorMode"])
+                mode = getattr(mod, "OperandMajorMode", None)
+                if mode is not None:
+                    nvgpu.OperandMajorMode = mode
+                    return
+            except Exception:
+                continue
+
+    _patch_cutlass_operand_major_mode()
     from unsloth import FastLanguageModel
 
     max_seq_length = 1024
