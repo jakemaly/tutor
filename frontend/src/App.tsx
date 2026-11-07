@@ -13,8 +13,16 @@ import {
 // This runtime connects assistant-ui to the FastAPI data-stream endpoint.
 import { useDataStreamRuntime } from "@assistant-ui/react-data-stream";
 // Render streamed assistant text as Markdown with GitHub-style tables and lists.
-import { MarkdownTextPrimitive } from "@assistant-ui/react-markdown";
+import {
+  MarkdownTextPrimitive,
+  normalizeMathDelimiters,
+  escapeCurrencyDollars,
+} from "@assistant-ui/react-markdown";
 import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
+import rehypeKatex from "rehype-katex";
+import "katex/dist/katex.min.css";
+import { SyntaxHighlighter } from "./shiki-highlighter";
 
 export default function App() {
   // The key below remounts ChatSession, which gives each new chat empty in-memory history.
@@ -147,7 +155,18 @@ function AssistantMessage() {
     <MessagePrimitive.Root className="message-row assistant-row">
       <div className="assistant-content">
         <MessagePrimitive.Parts
-          components={{ Text: () => <MarkdownTextPrimitive remarkPlugins={[remarkGfm]} /> }}
+          components={{
+            Text: () => (
+              <MarkdownTextPrimitive
+                remarkPlugins={[remarkGfm, remarkMath]}
+                rehypePlugins={[rehypeKatex]}
+                preprocess={(text) =>
+                  escapeCurrencyDollars(normalizeMathDelimiters(text))
+                }
+                components={{ SyntaxHighlighter }}
+              />
+            ),
+          }}
         />
       </div>
     </MessagePrimitive.Root>
