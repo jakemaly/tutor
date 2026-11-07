@@ -6,7 +6,7 @@
 #     "huggingface_hub",
 #     "marimo",
 #     "matplotlib",
-#     "nvidia-cutlass-dsl==4.6.0",
+#     "nvidia-cutlass-dsl[cu13]==4.8.1",
 #     "transformers>=5.5.3,<=5.17.0",
 #     "trl==0.22.2",
 #     "unsloth",
@@ -136,10 +136,9 @@ def _():
     os.environ["PIP_CACHE_DIR"] = "/tmp/pip-cache"
     os.environ["PIP_DISABLE_PIP_VERSION_CHECK"] = "1"
 
-    # Molab / Unsloth can leave nvidia-cutlass-dsl too old for Blackwell
-    # (OperandMajorMode lives on cutlass.cute.nvgpu from 4.5+). Pin the
-    # vLLM 0.26 cutlass wheel after unsloth so fast_inference can start.
-    # Keep trl 0.22.2 so GRPOConfig matches the pinned notebook.
+    # Molab Blackwell is CUDA 13. The image's /usr/local nvidia-cutlass-dsl
+    # often lacks cutlass.utils.block_copy (QuACK/vLLM import). Reinstall the
+    # cu13 extra over the system wheel. Keep trl 0.22.2 for GRPOConfig.
     subprocess.check_call(
         [
             sys.executable,
@@ -165,18 +164,20 @@ def _():
             "nvidia-cutlass-dsl",
         ]
     )
-    subprocess.check_call(
-        [
-            sys.executable,
-            "-m",
-            "pip",
-            "install",
-            "-q",
-            "--force-reinstall",
-            "--no-cache-dir",
-            "nvidia-cutlass-dsl==4.6.0",
-        ]
-    )
+    _cutlass_cmd = [
+        sys.executable,
+        "-m",
+        "pip",
+        "install",
+        "-q",
+        "--force-reinstall",
+        "--no-cache-dir",
+        "--ignore-installed",
+    ]
+    try:
+        subprocess.check_call(_cutlass_cmd + ["nvidia-cutlass-dsl[cu13]==4.8.1"])
+    except subprocess.CalledProcessError:
+        subprocess.check_call(_cutlass_cmd + ["nvidia-cutlass-dsl==4.8.1"])
     subprocess.check_call(
         [sys.executable, "-m", "pip", "install", "-q", "--no-deps", "trl==0.22.2"]
     )
@@ -349,30 +350,41 @@ def _(MODEL_NAME, get_model_bundle, set_model_bundle, torch):
         tokenizer = _bundle["tokenizer"]
         loaded_revision = _bundle["loaded_revision"]
     else:
-        model, tokenizer = FastLanguageModel.from_pretrained(
-            model_name=MODEL_NAME,
-            max_seq_length=max_seq_length,
-            load_in_4bit=True,
-            fast_inference=True,
-            max_lora_rank=lora_rank,
-            gpu_memory_utilization=0.7,
-        )
-        model = FastLanguageModel.get_peft_model(
-            model,
-            r=lora_rank,
-            target_modules=[
-                "q_proj",
-                "k_proj",
-                "v_proj",
-                "o_proj",
-                "gate_proj",
-                "up_proj",
-                "down_proj",
-            ],
-            lora_alpha=lora_rank,
-            use_gradient_checkpointing="unsloth",
-            random_state=3407,
-        )
+        def _load(*, fast_inference: bool):
+            loaded_model, loaded_tokenizer = FastLanguageModel.from_pretrained(
+                model_name=MODEL_NAME,
+                max_seq_length=max_seq_length,
+                load_in_4bit=True,
+                fast_inference=fast_inference,
+                max_lora_rank=lora_rank,
+                gpu_memory_utilization=0.7,
+            )
+            loaded_model = FastLanguageModel.get_peft_model(
+                loaded_model,
+                r=lora_rank,
+                target_modules=[
+                    "q_proj",
+                    "k_proj",
+                    "v_proj",
+                    "o_proj",
+                    "gate_proj",
+                    "up_proj",
+                    "down_proj",
+                ],
+                lora_alpha=lora_rank,
+                use_gradient_checkpointing="unsloth",
+                random_state=3407,
+            )
+            return loaded_model, loaded_tokenizer
+
+        use_vllm_runtime = True
+        vllm_load_error = None
+        try:
+            model, tokenizer = _load(fast_inference=True)
+        except Exception as exc:
+            vllm_load_error = f"{type(exc).__name__}: {exc}"
+            use_vllm_runtime = False
+            model, tokenizer = _load(fast_inference=False)
         loaded_revision = getattr(
             getattr(model, "config", None), "_name_or_path", MODEL_NAME
         )
@@ -381,10 +393,37 @@ def _(MODEL_NAME, get_model_bundle, set_model_bundle, torch):
                 "model": model,
                 "tokenizer": tokenizer,
                 "loaded_revision": loaded_revision,
+                "use_vllm_runtime": use_vllm_runtime,
+                "vllm_load_error": vllm_load_error,
             }
         )
         torch.cuda.empty_cache()
-    return lora_rank, max_seq_length, model, tokenizer, loaded_revision
+    use_vllm_runtime = _bundle.get("use_vllm_runtime", True) if _bundle else use_vllm_runtime
+    vllm_load_error = _bundle.get("vllm_load_error") if _bundle else vllm_load_error
+    return (
+        lora_rank,
+        loaded_revision,
+        max_seq_length,
+        model,
+        tokenizer,
+        use_vllm_runtime,
+        vllm_load_error,
+    )
+
+
+@app.cell
+def _(mo, use_vllm_runtime, vllm_load_error):
+    if use_vllm_runtime:
+        _status = "vLLM fast_inference is on (matches the pinned GRPO recipe)."
+    else:
+        _status = (
+            "vLLM failed to start on this Molab image, so GRPO will sample "
+            "with Hugging Face generate instead. Model, GSM8K, rewards, and "
+            "250 steps are unchanged.\n\n"
+            f"`{vllm_load_error}`"
+        )
+    mo.md(f"**Inference backend:** {_status}")
+    return
 
 
 @app.cell(hide_code=True)
@@ -582,11 +621,11 @@ def _(mo):
 
 
 @app.cell
-def _():
+def _(use_vllm_runtime):
     from trl import GRPOConfig, GRPOTrainer
 
     training_args = GRPOConfig(
-        use_vllm=True,
+        use_vllm=use_vllm_runtime,
         learning_rate=5e-6,
         adam_beta1=0.9,
         adam_beta2=0.99,
@@ -685,29 +724,54 @@ def _(mo):
 
 
 @app.cell
-def _(SYSTEM_PROMPT, dataset, model, tokenizer, train_result):
-    from vllm import SamplingParams
-
+def _(
+    SYSTEM_PROMPT,
+    dataset,
+    model,
+    tokenizer,
+    train_result,
+    use_vllm_runtime,
+):
     # Block this cell until the 250-step GRPO run finishes.
     _ = train_result
 
-    sampling_params = SamplingParams(
-        temperature=0.8,
-        top_p=0.95,
-        max_tokens=1024,
-    )
-
-    def generate(messages, lora_request):
+    def generate(messages, use_lora: bool):
         text = tokenizer.apply_chat_template(
             messages,
             tokenize=False,
             add_generation_prompt=True,
         )
-        return model.fast_generate(
-            [text],
-            sampling_params=sampling_params,
-            lora_request=lora_request,
-        )[0].outputs[0].text
+        if use_vllm_runtime:
+            from vllm import SamplingParams
+
+            sampling_params = SamplingParams(
+                temperature=0.8,
+                top_p=0.95,
+                max_tokens=1024,
+            )
+            lora_request = None
+            if use_lora:
+                lora_request = model.load_lora("grpo_saved_lora")
+            return model.fast_generate(
+                [text],
+                sampling_params=sampling_params,
+                lora_request=lora_request,
+            )[0].outputs[0].text
+        inputs = tokenizer(text, return_tensors="pt").to(model.device)
+        generate_kwargs = dict(
+            **inputs,
+            max_new_tokens=1024,
+            do_sample=True,
+            temperature=0.8,
+            top_p=0.95,
+        )
+        if use_lora:
+            out_ids = model.generate(**generate_kwargs)
+        else:
+            with model.disable_adapter():
+                out_ids = model.generate(**generate_kwargs)
+        prompt_len = inputs["input_ids"].shape[-1]
+        return tokenizer.decode(out_ids[0][prompt_len:], skip_special_tokens=True)
 
     strawberry_user = [{"role": "user", "content": "How many r's are in strawberry?"}]
     strawberry_with_system = [
@@ -717,14 +781,14 @@ def _(SYSTEM_PROMPT, dataset, model, tokenizer, train_result):
     gsm8k_example = dataset[0]
     gsm8k_prompt = gsm8k_example["prompt"]
 
-    before_strawberry = generate(strawberry_user, lora_request=None)
-    before_gsm8k = generate(gsm8k_prompt, lora_request=None)
+    before_strawberry = generate(strawberry_user, use_lora=False)
+    before_gsm8k = generate(gsm8k_prompt, use_lora=False)
 
-    model.save_lora("grpo_saved_lora")
-    lora_request = model.load_lora("grpo_saved_lora")
+    if use_vllm_runtime:
+        model.save_lora("grpo_saved_lora")
 
-    after_strawberry = generate(strawberry_with_system, lora_request=lora_request)
-    after_gsm8k = generate(gsm8k_prompt, lora_request=lora_request)
+    after_strawberry = generate(strawberry_with_system, use_lora=True)
+    after_gsm8k = generate(gsm8k_prompt, use_lora=True)
 
     generations = {
         "gsm8k_question": gsm8k_prompt[-1]["content"],
@@ -734,7 +798,7 @@ def _(SYSTEM_PROMPT, dataset, model, tokenizer, train_result):
         "before_gsm8k": before_gsm8k,
         "after_gsm8k": after_gsm8k,
     }
-    return generations, sampling_params
+    return (generations,)
 
 
 @app.cell
