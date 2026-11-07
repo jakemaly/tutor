@@ -1,5 +1,9 @@
 import { MarkdownText } from "@/components/assistant-ui/elements/markdown-text";
 import { TooltipIconButton } from "@/components/assistant-ui/elements/tooltip-icon-button";
+import {
+  MessageDaySeparator,
+  MessageTimestamp,
+} from "@/components/day-separator";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
@@ -238,8 +242,9 @@ const AssistantMessage: FC = () => {
     <MessagePrimitive.Root
       data-slot="aui_assistant-message-root"
       data-role="assistant"
-      className="fade-in slide-in-from-bottom-1 animate-in relative -mb-7.5 pb-7.5 duration-150 [contain-intrinsic-size:auto_200px] [content-visibility:auto]"
+      className="group/message-root fade-in slide-in-from-bottom-1 animate-in relative -mb-7.5 pb-7.5 duration-150"
     >
+      <MessageDaySeparator />
       <div
         data-slot="aui_assistant-message-content"
         className="text-foreground px-2 leading-relaxed wrap-break-word"
@@ -250,6 +255,7 @@ const AssistantMessage: FC = () => {
             return null;
           }}
         </MessagePrimitive.Parts>
+        <MessageTimestamp />
         <AuiIf
           condition={(s) =>
             s.message.status?.type === "running" && s.message.parts.length === 0
@@ -257,10 +263,13 @@ const AssistantMessage: FC = () => {
         >
           <span
             data-slot="aui_assistant-message-indicator"
-            className="animate-pulse font-sans"
+            role="status"
             aria-label="Assistant is working"
+            className="inline-flex items-center gap-1 px-2 py-1"
           >
-            {"●"}
+            <span className="size-1 animate-bounce rounded-full bg-current [animation-delay:-0.3s] motion-reduce:animate-none" />
+            <span className="size-1 animate-bounce rounded-full bg-current [animation-delay:-0.15s] motion-reduce:animate-none" />
+            <span className="size-1 animate-bounce rounded-full bg-current motion-reduce:animate-none" />
           </span>
         </AuiIf>
       </div>
@@ -282,7 +291,7 @@ const AssistantActionBar: FC = () => {
     <ActionBarPrimitive.Root
       hideWhenRunning
       autohide="never"
-      className="aui-assistant-action-bar-root text-muted-foreground animate-in fade-in col-start-3 row-start-2 -ms-1 flex gap-1 duration-200"
+      className="aui-assistant-action-bar-root text-muted-foreground col-start-3 row-start-2 -ms-1 flex gap-1 opacity-0 transition-opacity duration-200 group-hover/message-root:pointer-events-auto group-hover/message-root:opacity-100 group-focus-within/message-root:pointer-events-auto group-focus-within/message-root:opacity-100 pointer-events-none"
     >
       <ActionBarPrimitive.Copy asChild>
         <TooltipIconButton tooltip="Copy response">
@@ -330,14 +339,16 @@ const UserMessage: FC = () => {
   return (
     <MessagePrimitive.Root
       data-slot="aui_user-message-root"
-      className="fade-in slide-in-from-bottom-1 animate-in grid auto-rows-auto grid-cols-[minmax(72px,1fr)_auto] content-start gap-y-2 px-2 duration-150 [contain-intrinsic-size:auto_200px] [content-visibility:auto] [&:where(>*)]:col-start-2"
+      className="group/message-root fade-in slide-in-from-bottom-1 animate-in grid auto-rows-auto grid-cols-[minmax(72px,1fr)_auto] content-start gap-y-2 px-2 duration-150 [&:where(>*)]:col-start-2"
       data-role="user"
     >
+      <MessageDaySeparator />
       <div className="aui-user-message-content-wrapper relative col-start-2 min-w-0">
         <div className="aui-user-message-content peer bg-muted text-foreground rounded-(--composer-radius) px-4 py-2 wrap-break-word empty:hidden">
           <MessagePrimitive.Parts />
         </div>
-        <div className="aui-user-action-bar-wrapper absolute start-0 top-1/2 -translate-x-full -translate-y-1/2 pe-2 peer-empty:hidden rtl:translate-x-full">
+        <MessageTimestamp align="end" />
+        <div className="aui-user-action-bar-wrapper pointer-events-none absolute start-0 top-1/2 -translate-x-full -translate-y-1/2 pe-2 opacity-0 transition-opacity group-focus-within/message-root:pointer-events-auto group-focus-within/message-root:opacity-100 group-hover/message-root:pointer-events-auto group-hover/message-root:opacity-100 peer-empty:hidden rtl:translate-x-full">
           <UserActionBar />
         </div>
       </div>
