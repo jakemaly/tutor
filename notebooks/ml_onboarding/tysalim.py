@@ -37,7 +37,15 @@ def _():
         f"{UPSTREAM_NOTEBOOK_COMMIT}/nb/Qwen2.5_(3B)-GRPO.ipynb"
     )
     MODEL_NAME = "unsloth/Qwen2.5-3B-Instruct"
-    return MODEL_NAME, UPSTREAM_NOTEBOOK_COMMIT, UPSTREAM_NOTEBOOK_URL, mo
+    get_model_bundle, set_model_bundle = mo.state({})
+    return (
+        MODEL_NAME,
+        UPSTREAM_NOTEBOOK_COMMIT,
+        UPSTREAM_NOTEBOOK_URL,
+        get_model_bundle,
+        mo,
+        set_model_bundle,
+    )
 
 
 @app.cell(hide_code=True)
@@ -121,7 +129,9 @@ def _():
     import sys
     from pathlib import Path
 
-    os.environ["UNSLOTH_VLLM_STANDBY"] = "1"
+    # Colab sets this to "1" (sleep/offload). On Molab it makes vLLM try a
+    # second CuMem allocator in the same process. Keep GRPO use_vllm=True.
+    os.environ["UNSLOTH_VLLM_STANDBY"] = "0"
     os.environ.setdefault("HF_HUB_ENABLE_HF_TRANSFER", "1")
     os.environ["PIP_CACHE_DIR"] = "/tmp/pip-cache"
     os.environ["PIP_DISABLE_PIP_VERSION_CHECK"] = "1"
@@ -177,6 +187,8 @@ def _():
 
 @app.cell
 def _(mo, subprocess):
+    # Unsloth must be imported before torch is used for CUDA.
+    from unsloth import FastLanguageModel as _FastLanguageModel  # noqa: F401
     import torch
 
     if not torch.cuda.is_available():
@@ -302,7 +314,7 @@ def _(mo):
 
 
 @app.cell
-def _(MODEL_NAME, torch):
+def _(MODEL_NAME, get_model_bundle, set_model_bundle, torch):
     def _patch_cutlass_operand_major_mode() -> None:
         """vLLM 0.26 expects OperandMajorMode on cutlass.cute.nvgpu; older
         wheels only expose it under tcgen05. Alias if needed."""
@@ -331,32 +343,47 @@ def _(MODEL_NAME, torch):
     max_seq_length = 1024
     lora_rank = 64
 
-    model, tokenizer = FastLanguageModel.from_pretrained(
-        model_name=MODEL_NAME,
-        max_seq_length=max_seq_length,
-        load_in_4bit=True,
-        fast_inference=True,
-        max_lora_rank=lora_rank,
-        gpu_memory_utilization=0.9,
-    )
-    model = FastLanguageModel.get_peft_model(
-        model,
-        r=lora_rank,
-        target_modules=[
-            "q_proj",
-            "k_proj",
-            "v_proj",
-            "o_proj",
-            "gate_proj",
-            "up_proj",
-            "down_proj",
-        ],
-        lora_alpha=lora_rank,
-        use_gradient_checkpointing="unsloth",
-        random_state=3407,
-    )
-    loaded_revision = getattr(getattr(model, "config", None), "_name_or_path", MODEL_NAME)
-    torch.cuda.empty_cache()
+    _bundle = get_model_bundle()
+    if _bundle:
+        model = _bundle["model"]
+        tokenizer = _bundle["tokenizer"]
+        loaded_revision = _bundle["loaded_revision"]
+    else:
+        model, tokenizer = FastLanguageModel.from_pretrained(
+            model_name=MODEL_NAME,
+            max_seq_length=max_seq_length,
+            load_in_4bit=True,
+            fast_inference=True,
+            max_lora_rank=lora_rank,
+            gpu_memory_utilization=0.7,
+        )
+        model = FastLanguageModel.get_peft_model(
+            model,
+            r=lora_rank,
+            target_modules=[
+                "q_proj",
+                "k_proj",
+                "v_proj",
+                "o_proj",
+                "gate_proj",
+                "up_proj",
+                "down_proj",
+            ],
+            lora_alpha=lora_rank,
+            use_gradient_checkpointing="unsloth",
+            random_state=3407,
+        )
+        loaded_revision = getattr(
+            getattr(model, "config", None), "_name_or_path", MODEL_NAME
+        )
+        set_model_bundle(
+            {
+                "model": model,
+                "tokenizer": tokenizer,
+                "loaded_revision": loaded_revision,
+            }
+        )
+        torch.cuda.empty_cache()
     return lora_rank, max_seq_length, model, tokenizer, loaded_revision
 
 
