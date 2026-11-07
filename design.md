@@ -81,9 +81,9 @@ Teal and coral identify the TMI mark; they are not tutor/student role colors or 
 
 ### Typography
 
-| Figma text style | Font | Size / line height | Use |
-|---|---|---:|---|
-| `TMI/Display/Home` | Alike Regular | 66 / 82.5 px | Home heading |
+| Figma text style | Font | Size / line height | Tracking | Use |
+|---|---|---:|---:|---|
+| `TMI/Display/Home` | Alike Regular | 66 / 82.5 px | -1.5 px | Home heading |
 | `TMI/Body/Tutor` | SF Pro Regular | 19 / 29 px | Tutor response |
 | `TMI/Body/Student` | SF Pro Regular | 16 / 22 px | Student message |
 | `TMI/Composer/Placeholder` | SF Pro Regular | 22 / 31 px | Composer placeholder |
