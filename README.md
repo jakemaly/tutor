@@ -27,6 +27,8 @@ The UI and health check work without a model. For chat, set `LLM_BASE_URL`, `LLM
 
 ## Checks
 
+To add tutor skills or preview the exact model system prompt, see [Authoring tutor skills](docs/skills.md).
+
 ```sh
 npm run build
 npm run typecheck
