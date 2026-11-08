@@ -5,6 +5,7 @@ import {
   MessageTimestamp,
 } from "@/components/day-separator";
 import { Button } from "@/components/ui/button";
+import { ErrorState } from "@/components/error-state";
 import { cn } from "@/lib/utils";
 import {
   ActionBarMorePrimitive,
@@ -15,6 +16,7 @@ import {
   ComposerPrimitive,
   MessagePrimitive,
   ThreadPrimitive,
+  useAui,
   useAuiState,
 } from "@assistant-ui/react";
 import {
@@ -282,6 +284,35 @@ const AssistantMessage: FC = () => {
         <AssistantActionBar />
       </div>
     </MessagePrimitive.Root>
+  );
+};
+
+const AssistantError: FC = () => {
+  const aui = useAui();
+  const isRunning = useAuiState((s) => s.thread.isRunning);
+  const error = useAuiState((s) =>
+    s.message.status?.type === "incomplete" &&
+      s.message.status.reason === "error"
+      ? s.message.status.error
+      : undefined,
+  );
+
+  const detail =
+    typeof error === "string" && error.trim().length > 0
+      ? error
+      : "The response could not be completed. Please try again.";
+
+  return (
+    <MessagePrimitive.Error>
+      <div className="mt-2">
+        <ErrorState
+          title="Something went wrong"
+          detail={detail}
+          retrying={isRunning}
+          onRetry={() => aui.message().reload()}
+        />
+      </div>
+    </MessagePrimitive.Error>
   );
 };
 
