@@ -491,7 +491,6 @@ def test_streamed_tool_call_loads_skill_and_resumes_model(skill_name: str) -> No
             ]
         },
     )
-    asyncio.run(http_client.aclose())
 
     assert len(requests) == 2
     assert requests[0]["tools"][0]["function"]["name"] == "load_skill"
@@ -508,3 +507,60 @@ def test_streamed_tool_call_loads_skill_and_resumes_model(skill_name: str) -> No
     deltas = [json.loads(line[2:]) for line in response.text.splitlines() if line.startswith("0:")]
     assert "".join(deltas) == "The answer is x = 4."
     assert body not in response.text
+
+    events = [
+        (line[0], json.loads(line[2:]))
+        for line in response.text.splitlines()
+        if line.startswith(("b:", "c:", "a:"))
+    ]
+    assert [kind for kind, _ in events] == ["b", "c", "a"]
+    assert all(event["toolCallId"] == "load-1" for _, event in events)
+    assert events[0][1]["toolName"] == "load_skill"
+    assert json.loads(events[1][1]["argsTextDelta"]) == {"name": skill_name}
+    assert events[2][1]["result"] == {"loaded": skill_name == "worked-example"}
+    assert events[2][1].get("isError", False) == (skill_name != "worked-example")
+
+    # The runtime serializes traces into history; keep the next turn text-only for the model.
+    followup = client.post(
+        "/api/chat",
+        json={
+            "messages": [
+                user_message("Solve the equation"),
+                {
+                    "role": "assistant",
+                    "content": [
+                        {
+                            "type": "tool-call",
+                            "toolCallId": "load-1",
+                            "toolName": "load_skill",
+                            "input": {"name": skill_name},
+                        }
+                    ],
+                },
+                {
+                    "role": "tool",
+                    "content": [
+                        {
+                            "type": "tool-result",
+                            "toolCallId": "load-1",
+                            "toolName": "load_skill",
+                            "output": {"type": "json", "value": {"loaded": True}},
+                        }
+                    ],
+                },
+                {
+                    "role": "assistant",
+                    "content": [{"type": "text", "text": "The answer is x = 4."}],
+                },
+                user_message("Why?"),
+            ]
+        },
+    )
+    assert followup.status_code == 200
+    assert [message["role"] for message in requests[-1]["messages"]] == [
+        "system",
+        "user",
+        "assistant",
+        "user",
+    ]
+    asyncio.run(http_client.aclose())

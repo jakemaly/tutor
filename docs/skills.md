@@ -58,9 +58,14 @@ model for its answer. The tool only accepts discovered catalog names; it does no
 arbitrary model-supplied paths or execute scripts. Unknown names return a recoverable tool
 error. The model can answer directly when no new skill is needed.
 
-Loaded instructions remain in context during the current request. The text-only browser
-history does not persist tool calls/results across turns: the model loads a skill again on
-a later request if needed. Selection is a model judgment, not a deterministic guarantee.
+The chat shows `Loading skill: <name>` followed by `Loaded skill: <name>`, or
+`Skill not loaded: <name>` if the call fails or is interrupted. Only the name and load
+status reach the browser; full instructions stay on the server.
+
+Loaded instructions remain in model context during the current request. The chat retains
+the visible trace, but the backend strips display-only skill calls/results from subsequent
+requests and rebuilds text history. The model loads a skill again on a later request if
+needed. Selection is a model judgment, not a deterministic guarantee.
 
 ## Inspect and test
 
