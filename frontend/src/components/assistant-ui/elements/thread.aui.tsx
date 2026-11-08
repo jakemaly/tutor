@@ -16,6 +16,7 @@ import {
   ComposerPrimitive,
   MessagePrimitive,
   ThreadPrimitive,
+  type ToolCallMessagePartProps,
   useAui,
   useAuiState,
 } from "@assistant-ui/react";
@@ -251,13 +252,13 @@ const AssistantMessage: FC = () => {
         data-slot="aui_assistant-message-content"
         className="text-foreground px-2 leading-relaxed wrap-break-word"
       >
-        <MessagePrimitive.Parts>
-          {({ part }) => {
-            if (part.type === "text") return <MarkdownText />;
-            return null;
-          }}
-        </MessagePrimitive.Parts>
         <MessageTimestamp />
+        <MessagePrimitive.Parts
+          components={{
+            Text: MarkdownText,
+            tools: { by_name: { load_skill: SkillToolStatus } },
+          }}
+        />
         <AuiIf
           condition={(s) =>
             s.message.status?.type === "running" && s.message.parts.length === 0
@@ -288,6 +289,15 @@ const AssistantMessage: FC = () => {
     </MessagePrimitive.Root>
   );
 };
+
+const SkillToolStatus: FC<ToolCallMessagePartProps<{ name?: string }, { loaded: boolean }>> = ({
+  args, result, status,
+}) => (
+  <p role="status" className="my-2 text-sm text-muted-foreground">
+    {result?.loaded ? "Loaded skill" : result?.loaded === false || status.type === "incomplete"
+      ? "Skill not loaded" : "Loading skill"}: <span className="font-medium">{args.name || "…"}</span>
+  </p>
+);
 
 const AssistantError: FC = () => {
   const aui = useAui();

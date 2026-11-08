@@ -2,8 +2,8 @@
 
 # asyncio preserves cancellation so a browser Stop can reach the model request.
 import asyncio
+import json
 import logging
-from collections.abc import AsyncIterator
 from typing import Any
 
 # These libraries adapt the browser stream, define HTTP routes, and represent model messages.
@@ -11,7 +11,13 @@ from assistant_stream import RunController, create_run
 from assistant_stream.serialization import DataStreamResponse
 from fastapi import FastAPI, HTTPException
 from langchain_core.language_models import BaseChatModel
-from langchain_core.messages import AIMessage, AIMessageChunk, BaseMessage, HumanMessage
+from langchain_core.messages import (
+    AIMessage,
+    AIMessageChunk,
+    BaseMessage,
+    HumanMessage,
+    ToolMessage,
+)
 from pydantic import BaseModel, ConfigDict
 
 # Local modules separate configuration, graph behavior, and endpoint-specific model setup.
@@ -37,7 +43,17 @@ def _message_text(message: dict[str, Any]) -> str:
     if isinstance(content, str):
         return content
     if isinstance(content, list):
-        # File, image, tool, and malformed parts are outside this text-only starter's scope.
+        # Skill traces are display metadata, not model history or executable client tools.
+        if message.get("role") == "assistant":
+            content = [
+                part
+                for part in content
+                if not (
+                    isinstance(part, dict)
+                    and part.get("type") == "tool-call"
+                    and part.get("toolName") == "load_skill"
+                )
+            ]
         if any(
             not isinstance(part, dict)
             or part.get("type") != "text"
@@ -60,14 +76,27 @@ def _messages_for_graph(messages: list[dict[str, Any]]) -> list[BaseMessage]:
     result: list[BaseMessage] = []
     for message in relevant:
         role = message.get("role")
+        content = message.get("content")
+        if (
+            role == "tool"
+            and isinstance(content, list)
+            and content
+            and all(
+                isinstance(part, dict)
+                and part.get("type") == "tool-result"
+                and part.get("toolName") == "load_skill"
+                for part in content
+            )
+        ):
+            continue
         text = _message_text(message)
         if role == "user":
             if not text.strip():
                 raise HTTPException(status_code=422, detail="User messages must contain text.")
             result.append(HumanMessage(content=text))
-        elif role == "assistant":
+        elif role == "assistant" and text.strip():
             result.append(AIMessage(content=text))
-        else:
+        elif role != "assistant":
             raise HTTPException(
                 status_code=422, detail="Only user and assistant messages are supported."
             )
@@ -90,14 +119,34 @@ def _text_from_chunk(chunk: AIMessageChunk) -> str:
     return ""
 
 
-async def _stream_graph(graph: Any, messages: list[BaseMessage]) -> AsyncIterator[str]:
-    """Yield text deltas produced by LangGraph's messages stream mode."""
-    # The messages mode yields (chunk, metadata); metadata is not displayed in this chat UI.
-    async for chunk, _metadata in graph.astream({"messages": messages}, stream_mode="messages"):
-        if isinstance(chunk, AIMessageChunk):
-            text = _text_from_chunk(chunk)
-            if text:
-                yield text
+async def _stream_graph(graph: Any, messages: list[BaseMessage], controller: RunController) -> None:
+    """Forward answer text and skill-call status, keeping skill instructions server-side."""
+    calls = {}
+    async for mode, payload in graph.astream(
+        {"messages": messages}, stream_mode=["messages", "updates"]
+    ):
+        if controller.is_cancelled:
+            break
+        if mode == "messages":
+            chunk, _metadata = payload
+            if isinstance(chunk, AIMessageChunk):
+                text = _text_from_chunk(chunk)
+                if text:
+                    controller.append_text(text)
+        elif mode == "updates":
+            for update in payload.values():
+                for message in update.get("messages", []):
+                    if isinstance(message, AIMessage):
+                        for call in message.tool_calls:
+                            if call["name"] == "load_skill":
+                                tool = await controller.add_tool_call("load_skill", call["id"])
+                                tool.append_args_text(json.dumps(call["args"]))
+                                calls[call["id"]] = tool
+                    elif isinstance(message, ToolMessage) and message.tool_call_id in calls:
+                        failed = message.status == "error"
+                        calls.pop(message.tool_call_id).set_response(
+                            {"loaded": not failed}, is_error=failed
+                        )
 
 
 def create_app(settings: Settings | None = None, model: BaseChatModel | None = None) -> FastAPI:
@@ -139,11 +188,7 @@ def create_app(settings: Settings | None = None, model: BaseChatModel | None = N
         async def run(controller: RunController) -> None:
             """Forward graph text to the stream and translate failures into safe UI errors."""
             try:
-                async for text in _stream_graph(selected_graph, input_messages):
-                    # Do not send more data after the user has pressed Stop or closed the stream.
-                    if controller.is_cancelled:
-                        break
-                    controller.append_text(text)
+                await _stream_graph(selected_graph, input_messages, controller)
             except asyncio.CancelledError:
                 # Cancellation is control flow, not a model error to display to the user.
                 raise
