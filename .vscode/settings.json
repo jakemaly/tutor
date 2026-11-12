@@ -1,3 +1,4 @@
 {
-    "liveServer.settings.multiRootWorkspaceName": "tutor"
+  "liveServer.settings.multiRootWorkspaceName": "tutor",
+  "python.terminal.useEnvFile": true
 }

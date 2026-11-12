@@ -3,7 +3,7 @@
 import type { ComponentProps } from "react";
 import { useRef, useState } from "react";
 import { cn } from "@/lib/utils";
-import { useIsomorphicLayoutEffect } from "../utils/useIsomorphicLayoutEffect";
+import { useIsomorphicLayoutEffect } from "./useIsomorphicLayoutEffect";
 
 export const paper = "bg-background border border-border/60 dark:bg-popover";
 

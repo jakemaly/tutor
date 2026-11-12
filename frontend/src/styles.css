@@ -23,6 +23,14 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
@@ -47,6 +55,14 @@
   --border: #e4e4e7;
   --input: #e4e4e7;
   --ring: #a1a1aa;
+  --sidebar: #fff;
+  --sidebar-foreground: #18181b;
+  --sidebar-primary: #18181b;
+  --sidebar-primary-foreground: #fafafa;
+  --sidebar-accent: #f4f4f5;
+  --sidebar-accent-foreground: #18181b;
+  --sidebar-border: #e4e4e7;
+  --sidebar-ring: #a1a1aa;
   font-family: Arial, Helvetica, sans-serif;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -66,10 +82,13 @@ html, body, #root { width: 100%; min-width: 320px; height: 100%; margin: 0; }
 .app-shell {
   display: flex;
   height: 100dvh;
-  flex-direction: column;
+  min-height: 0;
+  flex-direction: row;
   overflow: hidden;
 }
 
+.app-main { min-width: 0; min-height: 0; }
+.topbar-leading { display: flex; align-items: center; gap: 12px; }
 .topbar {
   display: flex;
   min-height: 56px;
