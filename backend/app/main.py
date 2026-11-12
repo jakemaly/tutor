@@ -407,8 +407,14 @@ def create_app(settings: Settings | None = None, model: BaseChatModel | None = N
 
         stored_bytes = sum(len(item.data) for item in app.state.sources.values())
         previous = app.state.sources.get(source.id)
-        if stored_bytes - (len(previous.data) if previous else 0) + len(source.data) > MAX_ATTACHMENT_STORAGE_BYTES:
-            raise HTTPException(status_code=413, detail="Attachment storage is full. Remove an attachment and try again.")
+        if (
+            stored_bytes - (len(previous.data) if previous else 0) + len(source.data)
+            > MAX_ATTACHMENT_STORAGE_BYTES
+        ):
+            raise HTTPException(
+                status_code=413,
+                detail="Attachment storage is full. Remove an attachment and try again.",
+            )
         app.state.sources[source.id] = source
         return {
             "id": source.id,

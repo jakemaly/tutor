@@ -20,8 +20,8 @@ from app.config import Settings
 from app.documents import UploadedSource, create_source
 from app.graph import SYSTEM_PROMPT, create_graph
 from app.main import (
-    ChatRequest,
     MAX_ATTACHMENT_STORAGE_BYTES,
+    ChatRequest,
     _citation_link,
     _fallback_citations,
     _messages_for_graph,
