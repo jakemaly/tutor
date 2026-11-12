@@ -135,3 +135,8 @@ html, body, #root { width: 100%; min-width: 320px; height: 100%; margin: 0; }
 @media (prefers-reduced-motion: reduce) {
   .aui-root * { scroll-behavior: auto; animation: none; transition: none; }
 }
+
+[data-status] { min-width: 0; overflow-wrap: anywhere; }
+[data-status] pre { max-width: 100%; overflow-x: auto; }
+[data-status] .katex-display { max-width: 100%; overflow-x: auto; overflow-y: hidden; }
+.aui-shiki-base pre { margin: 0; padding: 0.75rem; overflow-x: auto; }
