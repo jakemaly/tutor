@@ -10,7 +10,7 @@ from uuid import uuid4
 import httpx
 import pytest
 from fastapi.testclient import TestClient
-from langchain_core.language_models.fake_chat_models import FakeListChatModel
+from langchain_core.language_models.fake_chat_models import FakeListChatModel as BaseFakeChatModel
 from langchain_core.messages import BaseMessage, HumanMessage
 from langchain_openai import ChatOpenAI
 from pydantic import PrivateAttr
@@ -28,6 +28,13 @@ from app.main import (
     create_app,
 )
 from app.models import create_chat_model
+
+
+class FakeListChatModel(BaseFakeChatModel):
+    """Text-only fixture that accepts tool binding; tool calls use HTTP fixtures below."""
+
+    def bind_tools(self, tools, **kwargs):
+        return self
 
 
 def configured_settings(**overrides: object) -> Settings:
@@ -417,6 +424,15 @@ def test_graph_is_built_from_an_injected_langchain_model() -> None:
     assert len(SYSTEM_PROMPT) > 0
 
 
+def test_skill_json_is_literal_context_not_a_prompt_template(monkeypatch) -> None:
+    prompt = SYSTEM_PROMPT + '\nExample: {"step": "explain"}'
+    monkeypatch.setattr("app.graph.SYSTEM_PROMPT", prompt)
+    model = RecordingFakeChatModel(responses=["A hint"])
+    graph = create_graph(model)
+    asyncio.run(graph.ainvoke({"messages": [HumanMessage(content="Help me")]}))
+    assert model._seen_messages[0][0].content == prompt
+
+
 def test_model_adapter_uses_only_the_current_endpoint_configuration(monkeypatch) -> None:
     """Each adapter uses its URL, model, and optional key without provider-specific options."""
     calls: list[dict[str, object]] = []
@@ -547,6 +563,8 @@ def test_openai_compatible_stream_works_through_fastapi_and_langgraph() -> None:
     assert "".join(deltas) == "OpenAI-compatible stream works."
     assert len(deltas) > 1
     sent_messages = sent_requests[0]["messages"]
+    assert sent_messages[0]["role"] == "system"
+    assert '<loaded_skill name="socratic-questioning">' in sent_messages[0]["content"]
     assert [message["content"] for message in sent_messages] == [
         SYSTEM_PROMPT,
         "First turn",
@@ -590,3 +608,159 @@ def test_closing_a_stream_cancels_an_active_model_request() -> None:
 
     assert "0:" in first_chunk
     assert model._was_cancelled
+
+
+@pytest.mark.parametrize("skill_name", ["worked-example", "../config.py"])
+def test_streamed_tool_call_loads_skill_and_resumes_model(skill_name: str) -> None:
+    """Exercise chunked tool arguments, real tool execution, and the follow-up API request."""
+    from app.skills import discover_skills
+
+    requests = []
+
+    def event(delta, finish_reason=None):
+        return (
+            "data: "
+            + json.dumps(
+                {
+                    "id": "test",
+                    "object": "chat.completion.chunk",
+                    "created": 0,
+                    "model": "test-model",
+                    "choices": [{"index": 0, "delta": delta, "finish_reason": finish_reason}],
+                }
+            )
+            + "\n\n"
+        )
+
+    def respond(request):
+        requests.append(json.loads(request.content))
+        if len(requests) == 1:
+            arguments = json.dumps({"name": skill_name})
+            events = [
+                event(
+                    {
+                        "role": "assistant",
+                        "tool_calls": [
+                            {
+                                "index": 0,
+                                "id": "load-1",
+                                "type": "function",
+                                "function": {"name": "load_skill", "arguments": arguments[:8]},
+                            }
+                        ],
+                    }
+                ),
+                event(
+                    {
+                        "tool_calls": [
+                            {
+                                "index": 0,
+                                "function": {"arguments": arguments[8:]},
+                            }
+                        ]
+                    }
+                ),
+                event({}, "tool_calls"),
+            ]
+        else:
+            events = [event({"content": "The answer is x = 4."}), event({}, "stop")]
+        return httpx.Response(
+            200,
+            headers={"content-type": "text/event-stream"},
+            stream=StaticEventStream([*events, "data: [DONE]\n\n"]),
+        )
+
+    http_client = httpx.AsyncClient(transport=httpx.MockTransport(respond))
+    model = ChatOpenAI(
+        model="test-model",
+        base_url="https://example.invalid/v1",
+        api_key="test-key",
+        use_responses_api=False,
+        stream_usage=False,
+        streaming=True,
+        http_async_client=http_client,
+    )
+    client = TestClient(create_app(settings=configured_settings(), model=model))
+    response = client.post(
+        "/api/chat",
+        json={
+            "messages": [
+                user_message(
+                    "Give me the complete worked solution to 2x + 3 = 11, including a check."
+                )
+            ]
+        },
+    )
+
+    assert len(requests) == 2
+    assert requests[0]["tools"][0]["function"]["name"] == "load_skill"
+    body = discover_skills()["worked-example"].instructions
+    assert body not in requests[0]["messages"][0]["content"]
+    messages = requests[1]["messages"]
+    assert [message["role"] for message in messages] == ["system", "user", "assistant", "tool"]
+    assert messages[-1]["tool_call_id"] == "load-1"
+    if skill_name == "worked-example":
+        assert body in messages[-1]["content"]
+    else:
+        assert "Unknown skill" in messages[-1]["content"]
+        assert "Available skills" in messages[-1]["content"]
+    deltas = [json.loads(line[2:]) for line in response.text.splitlines() if line.startswith("0:")]
+    assert "".join(deltas) == "The answer is x = 4."
+    assert body not in response.text
+
+    events = [
+        (line[0], json.loads(line[2:]))
+        for line in response.text.splitlines()
+        if line.startswith(("b:", "c:", "a:"))
+    ]
+    assert [kind for kind, _ in events] == ["b", "c", "a"]
+    assert all(event["toolCallId"] == "load-1" for _, event in events)
+    assert events[0][1]["toolName"] == "load_skill"
+    assert json.loads(events[1][1]["argsTextDelta"]) == {"name": skill_name}
+    assert events[2][1]["result"] == {"loaded": skill_name == "worked-example"}
+    assert events[2][1].get("isError", False) == (skill_name != "worked-example")
+
+    # The runtime serializes traces into history; keep the next turn text-only for the model.
+    followup = client.post(
+        "/api/chat",
+        json={
+            "messages": [
+                user_message("Solve the equation"),
+                {
+                    "role": "assistant",
+                    "content": [
+                        {
+                            "type": "tool-call",
+                            "toolCallId": "load-1",
+                            "toolName": "load_skill",
+                            "input": {"name": skill_name},
+                        }
+                    ],
+                },
+                {
+                    "role": "tool",
+                    "content": [
+                        {
+                            "type": "tool-result",
+                            "toolCallId": "load-1",
+                            "toolName": "load_skill",
+                            "output": {"type": "json", "value": {"loaded": True}},
+                        }
+                    ],
+                },
+                {
+                    "role": "assistant",
+                    "content": [{"type": "text", "text": "The answer is x = 4."}],
+                },
+                user_message("Why?"),
+            ]
+        },
+    )
+    assert followup.status_code == 200
+    assert [message["role"] for message in requests[-1]["messages"]] == [
+        "system",
+        "user",
+        "assistant",
+        "user",
+    ]
+    asyncio.run(http_client.aclose())

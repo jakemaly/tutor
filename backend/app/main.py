@@ -3,9 +3,9 @@
 # asyncio preserves cancellation so a browser Stop can reach the model request.
 import asyncio
 import base64
+import json
 import logging
 import re
-from collections.abc import AsyncIterator
 from typing import Any
 from urllib.parse import quote, unquote
 from uuid import UUID
@@ -15,7 +15,13 @@ from assistant_stream import RunController, create_run
 from assistant_stream.serialization import DataStreamResponse
 from fastapi import FastAPI, HTTPException, Request, Response
 from langchain_core.language_models import BaseChatModel
-from langchain_core.messages import AIMessage, AIMessageChunk, BaseMessage, HumanMessage
+from langchain_core.messages import (
+    AIMessage,
+    AIMessageChunk,
+    BaseMessage,
+    HumanMessage,
+    ToolMessage,
+)
 from pydantic import BaseModel, ConfigDict
 
 # Local modules separate configuration, graph behavior, and endpoint-specific model setup.
@@ -84,7 +90,17 @@ def _message_text(message: dict[str, Any]) -> str:
     if isinstance(content, str):
         return content
     if isinstance(content, list):
-        # File, image, tool, and malformed parts are outside this text-only starter's scope.
+        # Skill traces are display metadata, not model history or executable client tools.
+        if message.get("role") == "assistant":
+            content = [
+                part
+                for part in content
+                if not (
+                    isinstance(part, dict)
+                    and part.get("type") == "tool-call"
+                    and part.get("toolName") == "load_skill"
+                )
+            ]
         if any(
             not isinstance(part, dict)
             or part.get("type") != "text"
@@ -109,10 +125,25 @@ def _messages_for_graph(
     result: list[BaseMessage] = []
     for message in relevant:
         role = message.get("role")
+        content = message.get("content")
+        if (
+            role == "tool"
+            and isinstance(content, list)
+            and content
+            and all(
+                isinstance(part, dict)
+                and part.get("type") == "tool-result"
+                and part.get("toolName") == "load_skill"
+                for part in content
+            )
+        ):
+            continue
         if role == "user":
             result.append(_user_message_for_graph(message, sources or {}))
         elif role == "assistant":
-            result.append(AIMessage(content=_message_text(message)))
+            text = _message_text(message)
+            if text.strip():
+                result.append(AIMessage(content=text))
         else:
             raise HTTPException(
                 status_code=422, detail="Only user and assistant messages are supported."
@@ -327,42 +358,58 @@ def _text_from_chunk(chunk: AIMessageChunk) -> str:
     return ""
 
 
-async def _stream_graph(graph: Any, messages: list[BaseMessage]) -> AsyncIterator[str]:
-    """Yield text deltas produced by LangGraph's messages stream mode."""
-    # The messages mode yields (chunk, metadata); metadata is not displayed in this chat UI.
-    async for chunk, _metadata in graph.astream({"messages": messages}, stream_mode="messages"):
-        if isinstance(chunk, AIMessageChunk):
-            text = _text_from_chunk(chunk)
-            if text:
-                yield text
-
-
-async def _stream_with_citations(
+async def _stream_graph(
     graph: Any,
     messages: list[BaseMessage],
+    controller: RunController,
     sources: dict[str, UploadedSource],
     allowed_ids: set[str],
-) -> AsyncIterator[str]:
-    """Stream complete claims with validated inline citations and a compact source list."""
-    if not allowed_ids:
-        async for delta in _stream_graph(graph, messages):
-            yield delta
-        return
-
+) -> None:
+    """Forward cited answer text and skill-call status, keeping skill instructions server-side."""
+    calls = {}
     pending = ""
     cited_links: list[str] = []
-    async for delta in _stream_graph(graph, messages):
-        pending += delta
-        while (segment := _next_citation_segment(pending, final=False)) is not None:
-            complete, pending = segment
-            yield _render_cited_segment(complete, sources, allowed_ids, cited_links)
 
-    while (segment := _next_citation_segment(pending, final=True)) is not None:
-        complete, pending = segment
-        yield _render_cited_segment(complete, sources, allowed_ids, cited_links)
-    unique_links = list(dict.fromkeys(cited_links))
-    if unique_links:
-        yield "\n\n**Sources:** " + " · ".join(unique_links)
+    def append_text(text: str, final: bool = False) -> None:
+        nonlocal pending
+        if not allowed_ids:
+            controller.append_text(text)
+            return
+        pending += text
+        while (segment := _next_citation_segment(pending, final=final)) is not None:
+            complete, pending = segment
+            controller.append_text(
+                _render_cited_segment(complete, sources, allowed_ids, cited_links)
+            )
+
+    async for mode, payload in graph.astream(
+        {"messages": messages}, stream_mode=["messages", "updates"]
+    ):
+        if controller.is_cancelled:
+            break
+        if mode == "messages":
+            chunk, _metadata = payload
+            if isinstance(chunk, AIMessageChunk):
+                text = _text_from_chunk(chunk)
+                if text:
+                    append_text(text)
+        elif mode == "updates":
+            for update in payload.values():
+                for message in update.get("messages", []):
+                    if isinstance(message, AIMessage):
+                        for call in message.tool_calls:
+                            if call["name"] == "load_skill":
+                                tool = await controller.add_tool_call("load_skill", call["id"])
+                                tool.append_args_text(json.dumps(call["args"]))
+                                calls[call["id"]] = tool
+                    elif isinstance(message, ToolMessage) and message.tool_call_id in calls:
+                        failed = message.status == "error"
+                        calls.pop(message.tool_call_id).set_response(
+                            {"loaded": not failed}, is_error=failed
+                        )
+    append_text("", final=True)
+    if cited_links:
+        controller.append_text("\n\n**Sources:** " + " · ".join(dict.fromkeys(cited_links)))
 
 
 def create_app(settings: Settings | None = None, model: BaseChatModel | None = None) -> FastAPI:
@@ -476,13 +523,13 @@ def create_app(settings: Settings | None = None, model: BaseChatModel | None = N
         async def run(controller: RunController) -> None:
             """Forward graph text to the stream and translate failures into safe UI errors."""
             try:
-                async for text in _stream_with_citations(
-                    selected_graph, input_messages, app.state.sources, allowed_source_ids
-                ):
-                    # Do not send more data after the user has pressed Stop or closed the stream.
-                    if controller.is_cancelled:
-                        break
-                    controller.append_text(text)
+                await _stream_graph(
+                    selected_graph,
+                    input_messages,
+                    controller,
+                    app.state.sources,
+                    allowed_source_ids,
+                )
             except asyncio.CancelledError:
                 # Cancellation is control flow, not a model error to display to the user.
                 raise

@@ -2,29 +2,36 @@
 
 # LangChain supplies the provider-neutral model and messages; LangGraph defines the workflow.
 from langchain_core.language_models import BaseChatModel
-from langchain_core.messages import BaseMessage
+from langchain_core.messages import BaseMessage, SystemMessage
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-from langgraph.graph import END, START, MessagesState, StateGraph
+from langgraph.graph import START, MessagesState, StateGraph
+from langgraph.prebuilt import ToolNode, tools_condition
 
-SYSTEM_PROMPT = """You are a helpful, clear assistant. Answer questions directly and accurately.
+from app.skills import build_system_prompt, discover_skills, make_load_skill
+
+SKILLS = discover_skills()
+SYSTEM_PROMPT = (
+    build_system_prompt(SKILLS)
+    + """
+
 When attached sources are provided, cite factual claims with the exact marker
 [[cite:SOURCE_ID:PAGE_NUMBER]], using only source IDs and page numbers shown in the
 attachment context. Never invent citations. For image attachments, cite page 1. Do not
 emit citation markers when no attached source supports the claim."""
+)
 
 
 def create_graph(model: BaseChatModel):
-    """Compile a single-node graph around any LangChain chat model."""
+    """Let the model load relevant skills, then stream its answer."""
+    tools = [make_load_skill(SKILLS)]
     # LCEL formats the prompt, then passes its messages to the configured model.
-    chat_chain = (
-        ChatPromptTemplate.from_messages(
-            [
-                ("system", SYSTEM_PROMPT),
-                MessagesPlaceholder("messages"),
-            ]
-        )
-        | model
-    )
+    chat_chain = ChatPromptTemplate.from_messages(
+        [
+            # Skills can contain JSON/code braces; they are literal text, not templates.
+            SystemMessage(content=SYSTEM_PROMPT),
+            MessagesPlaceholder("messages"),
+        ]
+    ) | model.bind_tools(tools)
 
     async def chat(state: MessagesState) -> dict[str, list[BaseMessage]]:
         """Stream one assistant reply and return it as the graph's new message."""
@@ -35,9 +42,11 @@ def create_graph(model: BaseChatModel):
             response = chunk if response is None else response + chunk
         return {"messages": [response] if response is not None else []}
 
-    # One node is enough for this starter; later workflow steps can be added as graph nodes.
     graph = StateGraph(MessagesState)
     graph.add_node("chat", chat)
+    graph.add_node("tools", ToolNode(tools, handle_tool_errors=True))
     graph.add_edge(START, "chat")
-    graph.add_edge("chat", END)
-    return graph.compile()
+    graph.add_conditional_edges("chat", tools_condition)
+    graph.add_edge("tools", "chat")
+    # Bound repeated tool requests if a model fails to move on to its answer.
+    return graph.compile().with_config({"recursion_limit": 12})

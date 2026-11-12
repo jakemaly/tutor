@@ -31,6 +31,8 @@ The chat accepts PDF, JPEG, PNG, and WebP files up to 10 MB. PDFs are text-extra
 
 ## Checks
 
+To add tutor skills or preview the exact model system prompt, see [Authoring tutor skills](docs/skills.md).
+
 ```sh
 npm run build
 npm run typecheck
