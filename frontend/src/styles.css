@@ -139,4 +139,11 @@ html, body, #root { width: 100%; min-width: 320px; height: 100%; margin: 0; }
 [data-status] { min-width: 0; overflow-wrap: anywhere; }
 [data-status] pre { max-width: 100%; overflow-x: auto; }
 [data-status] .katex-display { max-width: 100%; overflow-x: auto; overflow-y: hidden; }
-.aui-shiki-base pre { margin: 0; padding: 0.75rem; overflow-x: auto; }
+.aui-shiki-base pre {
+  margin: 0;
+  padding: 0.75rem;
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-top: 0;
+  border-radius: 0 0 var(--radius) var(--radius);
+}

@@ -18,6 +18,7 @@ import { CheckIcon, CopyIcon } from "lucide-react";
 import { TooltipIconButton } from "@/components/assistant-ui/elements/tooltip-icon-button";
 import { useCopyToClipboard } from "@/hooks/use-copy-to-clipboard";
 import { cn } from "@/lib/utils";
+import { SyntaxHighlighter } from "@/shiki-highlighter";
 
 const MarkdownTextImpl = () => {
   return (
@@ -241,5 +242,6 @@ const defaultComponents = memoizeMarkdownComponents({
       />
     );
   },
+  SyntaxHighlighter,
   CodeHeader,
 });
