@@ -21,6 +21,7 @@ from app.documents import UploadedSource, create_source
 from app.graph import SYSTEM_PROMPT, create_graph
 from app.main import (
     ChatRequest,
+    MAX_ATTACHMENT_STORAGE_BYTES,
     _citation_link,
     _fallback_citations,
     _messages_for_graph,
@@ -217,6 +218,28 @@ def test_uploads_serves_and_removes_validated_image_source() -> None:
     assert client.get(f"/api/attachments/{source_id}?page=2").status_code == 404
     assert client.delete(f"/api/attachments/{source_id}").status_code == 204
     assert client.get(f"/api/attachments/{source_id}").status_code == 404
+
+
+def test_upload_rejects_when_aggregate_attachment_storage_is_full() -> None:
+    client = TestClient(create_app(settings=configured_settings()))
+    source_id = str(uuid4())
+    app = client.app
+    app.state.sources[source_id] = UploadedSource(
+        id=source_id,
+        filename="existing.png",
+        media_type="image/png",
+        data=b"x" * MAX_ATTACHMENT_STORAGE_BYTES,
+        pages=("",),
+    )
+
+    response = client.put(
+        f"/api/attachments/{uuid4()}",
+        content=b"\x89PNG\r\n\x1a\nimage data",
+        headers={"content-type": "image/png", "x-file-name": "image.png"},
+    )
+
+    assert response.status_code == 413
+    assert len(app.state.sources) == 1
 
 
 def test_upload_rejects_mismatched_mime_type_and_file_signature() -> None:

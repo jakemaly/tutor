@@ -25,6 +25,7 @@ from app.graph import create_graph
 from app.models import create_chat_model
 
 logger = logging.getLogger(__name__)
+MAX_ATTACHMENT_STORAGE_BYTES = 100 * 1024 * 1024
 CITATION_PREFIX = "[[cite:"
 CITATION_PATTERN = re.compile(r"\[\[cite:([0-9a-fA-F-]{36}):(\d+)\]\]")
 CITATION_STOP_WORDS = {
@@ -404,6 +405,10 @@ def create_app(settings: Settings | None = None, model: BaseChatModel | None = N
         except ValueError as error:
             raise HTTPException(status_code=422, detail=str(error)) from error
 
+        stored_bytes = sum(len(item.data) for item in app.state.sources.values())
+        previous = app.state.sources.get(source.id)
+        if stored_bytes - (len(previous.data) if previous else 0) + len(source.data) > MAX_ATTACHMENT_STORAGE_BYTES:
+            raise HTTPException(status_code=413, detail="Attachment storage is full. Remove an attachment and try again.")
         app.state.sources[source.id] = source
         return {
             "id": source.id,
