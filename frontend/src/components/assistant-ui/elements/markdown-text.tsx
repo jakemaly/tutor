@@ -14,16 +14,81 @@ import rehypeKatex from "rehype-katex";
 import "katex/dist/katex.min.css";
 import { type FC, memo } from "react";
 import { CheckIcon, CopyIcon } from "lucide-react";
+import type { Plugin } from "unified";
 
 import { TooltipIconButton } from "@/components/assistant-ui/elements/tooltip-icon-button";
 import { useCopyToClipboard } from "@/hooks/use-copy-to-clipboard";
 import { cn } from "@/lib/utils";
 import { SyntaxHighlighter } from "@/shiki-highlighter";
 
+type MarkdownNode = {
+  type: string;
+  value?: string;
+  position?: { start: { offset?: number }; end: { offset?: number } };
+  children?: MarkdownNode[];
+  [key: string]: unknown;
+};
+
+const displayMathPlugin: Plugin = () => (tree, file) => {
+  const source = String(file.value ?? "");
+  // normalizeMathDelimiters emits $$...$$, which remark-math otherwise parses inline.
+  const splitDisplayMath = (node: MarkdownNode): MarkdownNode[] => {
+    if (!node.children) return [node];
+
+    node.children = node.children.flatMap(splitDisplayMath);
+    if (node.type !== "paragraph") return [node];
+
+    const parts: MarkdownNode[] = [];
+    let paragraph: MarkdownNode[] = [];
+
+    for (const child of node.children) {
+      const start = child.position?.start.offset;
+      const end = child.position?.end.offset;
+      const sourceText =
+        start !== undefined && end !== undefined
+          ? source.slice(start, end)
+          : "";
+
+      if (
+        child.type !== "inlineMath" ||
+        !sourceText.startsWith("$$") ||
+        !sourceText.endsWith("$$")
+      ) {
+        paragraph.push(child);
+        continue;
+      }
+
+      if (paragraph.length > 0) parts.push({ ...node, children: paragraph });
+      paragraph = [];
+      parts.push({
+        type: "math",
+        value: child.value,
+        data: {
+          hName: "pre",
+          hChildren: [
+            {
+              type: "element",
+              tagName: "code",
+              properties: { className: ["language-math", "math-display"] },
+              children: [{ type: "text", value: child.value }],
+            },
+          ],
+        },
+      });
+    }
+
+    if (paragraph.length > 0) parts.push({ ...node, children: paragraph });
+    return parts.length > 0 ? parts : [node];
+  };
+
+  const root = tree as unknown as MarkdownNode;
+  if (root.children) root.children = root.children.flatMap(splitDisplayMath);
+};
+
 const MarkdownTextImpl = () => {
   return (
     <MarkdownTextPrimitive
-      remarkPlugins={[remarkGfm, remarkMath]}
+      remarkPlugins={[remarkGfm, remarkMath, displayMathPlugin]}
       rehypePlugins={[rehypeKatex]}
       preprocess={(text) =>
         escapeCurrencyDollars(normalizeMathDelimiters(text))
