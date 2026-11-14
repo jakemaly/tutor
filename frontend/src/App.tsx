@@ -1,5 +1,5 @@
 import { lazy, Suspense, useMemo, useState } from "react";
-import { PenLineIcon } from "lucide-react";
+import { ArrowLeftIcon, PenLineIcon } from "lucide-react";
 import {
   AssistantRuntimeProvider,
   useAui,
@@ -19,7 +19,6 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { useIsMobile } from "@/hooks/use-mobile";
 
 // tldraw is large, so it loads only when the learner opens the whiteboard.
 const WhiteboardPanel = lazy(() => import("@/components/whiteboard/whiteboard-panel"));
@@ -27,7 +26,6 @@ const WhiteboardPanel = lazy(() => import("@/components/whiteboard/whiteboard-pa
 export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [whiteboardOpen, setWhiteboardOpen] = useState(false);
-  const isMobile = useIsMobile();
   const adapter = useMemo(
     () =>
       Object.assign(new SessionThreadListAdapter(), {
@@ -76,8 +74,12 @@ export default function App() {
                   onClick={() => setWhiteboardOpen((open) => !open)}
                   aria-pressed={whiteboardOpen}
                 >
-                  <PenLineIcon className="inline size-3.5" aria-hidden="true" />{" "}
-                  {whiteboardOpen ? "Close whiteboard" : "Whiteboard"}
+                  {whiteboardOpen ? (
+                    <ArrowLeftIcon className="inline size-3.5" aria-hidden="true" />
+                  ) : (
+                    <PenLineIcon className="inline size-3.5" aria-hidden="true" />
+                  )}{" "}
+                  {whiteboardOpen ? "Back to Tutor" : "Whiteboard"}
                 </button>
                 <button className="new-chat-button" onClick={startNewChat}>
                   <span aria-hidden="true">＋</span> New chat
@@ -101,13 +103,13 @@ export default function App() {
                 <Suspense
                   fallback={<div className="whiteboard-panel whiteboard-loading">Loading whiteboard…</div>}
                 >
-                  <WhiteboardPanel onSent={isMobile ? () => setWhiteboardOpen(false) : undefined} />
+                  <WhiteboardPanel onSent={() => setWhiteboardOpen(false)} />
                 </Suspense>
               )}
               <section
                 className="chat-panel"
                 aria-label="Chat"
-                hidden={whiteboardOpen && isMobile}
+                hidden={whiteboardOpen}
               >
                 <Thread />
               </section>
