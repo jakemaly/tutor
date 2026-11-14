@@ -10,6 +10,8 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins: [react(), tailwindcss()],
+    // Share the repo-root .env; only VITE_-prefixed values reach the browser bundle.
+    envDir: fileURLToPath(new URL("..", import.meta.url)),
     resolve: {
       alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) },
     },
