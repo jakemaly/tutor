@@ -1,6 +1,7 @@
 """Episode loop and reward logic, exercised with scripted fake models (no GPU needed)."""
 
 from collections.abc import Sequence
+from pathlib import Path
 
 from tutor_rl.config import EpisodeConfig, RewardConfig, load_config
 from tutor_rl.episode import Message, Problem, run_episode
@@ -76,5 +77,5 @@ def test_group_advantages_are_centered() -> None:
 
 
 def test_small_config_loads() -> None:
-    cfg = load_config("configs/small.toml")
+    cfg = load_config(Path(__file__).parents[1] / "configs" / "small.toml")
     assert cfg.episode.max_turns == 8 and cfg.reward.leak_penalty == 1.0
