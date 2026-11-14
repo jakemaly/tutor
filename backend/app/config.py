@@ -19,6 +19,14 @@ class Settings(BaseSettings):
     llm_model: str | None = None  # Provider's model or deployment name.
     llm_api_key: SecretStr | None = None  # Optional when the endpoint needs no auth.
 
+    searxng_url: str = "http://searxng:8080"
+    firecrawl_api_key: SecretStr | None = None
+    web_search_max_result: int = 5
+    web_fetch_max_urls: int = 2
+    web_fetch_max_chars: int = 8000
+    web_tool_timeout_s: float = 15
+    web_max_calls_per_answer: int = 4
+
     @property
     def model_configured(self) -> bool:
         """A URL and model are required before the backend can create a client."""
