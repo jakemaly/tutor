@@ -95,12 +95,14 @@ def serve():
         "--host", "0.0.0.0",
         "--port", "8000",
         "--download-dir", "/cache/huggingface/hub",
-        "--max-model-len", "4096",
+        # Use the longest context that fits this GPU; /v1/models reports the chosen size.
+        "--max-model-len", "auto",
         "--max-num-seqs", "4",
         "--gpu-memory-utilization", "0.85",
         "--reasoning-parser", "qwen3",
+        "--enable-auto-tool-choice",
+        "--tool-call-parser", "qwen3_xml",
         "--default-chat-template-kwargs", '{"enable_thinking": false}',
-        "--override-generation-config", '{"max_new_tokens": 512}',
         "--enforce-eager",
     ]
 

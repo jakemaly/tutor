@@ -564,3 +564,124 @@ def test_streamed_tool_call_loads_skill_and_resumes_model(skill_name: str) -> No
         "user",
     ]
     asyncio.run(http_client.aclose())
+
+
+@pytest.mark.parametrize(
+    ("finish_reason", "total_tokens", "models_response", "expected_chats", "expected_lookups"),
+    [
+        # The size comes from the server, so the same usage continues or stops by its value.
+        pytest.param("length", 2000, {"max_model_len": 4096}, 2, 1, id="continues"),
+        pytest.param("length", 4096, {"max_model_len": 4096}, 1, 1, id="context-exhausted"),
+        pytest.param("length", 4096, {"max_model_len": 8192}, 2, 1, id="larger-discovered"),
+        pytest.param("stop", 2000, {"max_model_len": 4096}, 1, 0, id="natural-stop"),
+        pytest.param("length", 2000, {}, 1, 1, id="no-metadata"),
+        pytest.param(
+            "length",
+            2000,
+            {"id": "other-model", "max_model_len": 4096},
+            1,
+            1,
+            id="other-model-only",
+        ),
+        pytest.param("length", 2000, None, 1, 1, id="models-endpoint-fails"),
+    ],
+)
+def test_length_limited_answer_continues_only_with_discovered_context(
+    finish_reason, total_tokens, models_response, expected_chats, expected_lookups
+) -> None:
+    """Resume truncated answers only while the server-reported context has room."""
+    chats = []
+    lookups = []
+
+    def event(delta, reason=None):
+        payload = {
+            "id": "continuation-test",
+            "object": "chat.completion.chunk",
+            "created": 0,
+            "model": "test-model",
+            "choices": [{"index": 0, "delta": delta, "finish_reason": reason}],
+        }
+        return f"data: {json.dumps(payload)}\n\n"
+
+    def respond(request):
+        if request.method == "GET" and request.url.path == "/v1/models":
+            lookups.append(request)
+            if models_response is None:
+                return httpx.Response(404, json={"error": {"message": "not found"}})
+            card = {"id": "test-model", "object": "model", **models_response}
+            return httpx.Response(200, json={"object": "list", "data": [card]})
+
+        chats.append(json.loads(request.content))
+        first_request = len(chats) == 1
+        events = [
+            event({"role": "assistant"}),
+            event({"content": "The answer is " if first_request else "ten."}),
+            event({}, finish_reason if first_request else "stop"),
+        ]
+        usage = {
+            "id": "continuation-test",
+            "object": "chat.completion.chunk",
+            "created": 0,
+            "model": "test-model",
+            "choices": [],
+            "usage": {
+                "prompt_tokens": total_tokens - 100,
+                "completion_tokens": 100,
+                "total_tokens": total_tokens,
+            },
+        }
+        events.append(f"data: {json.dumps(usage)}\n\n")
+        events.append("data: [DONE]\n\n")
+        return httpx.Response(
+            200,
+            headers={"content-type": "text/event-stream"},
+            stream=StaticEventStream(events),
+        )
+
+    http_client = httpx.AsyncClient(transport=httpx.MockTransport(respond))
+    model = ChatOpenAI(
+        model="test-model",
+        base_url="https://example.invalid/v1",
+        api_key="test-key",
+        use_responses_api=False,
+        stream_usage=False,
+        streaming=True,
+        max_retries=0,
+        http_async_client=http_client,
+    )
+    client = TestClient(create_app(settings=configured_settings(), model=model))
+
+    try:
+        response = client.post(
+            "/api/chat",
+            json={"messages": [user_message("What is five plus five?")]},
+        )
+    finally:
+        asyncio.run(http_client.aclose())
+
+    assert response.status_code == 200
+    assert "model request failed" not in response.text
+    assert len(chats) == expected_chats
+    assert len(lookups) == expected_lookups
+    # Discovery reuses the chat model's credentials.
+    assert all(lookup.headers["authorization"] == "Bearer test-key" for lookup in lookups)
+
+    text = "".join(
+        json.loads(line[2:]) for line in response.text.splitlines() if line.startswith("0:")
+    )
+    # Both pieces stream into one browser response, without repeating the prefix.
+    expected_text = "The answer is ten." if expected_chats == 2 else "The answer is "
+    assert text == expected_text
+    for chat in chats:
+        assert "max_tokens" not in chat
+        assert "max_completion_tokens" not in chat
+    assert chats[0]["stream_options"] == {"include_usage": True}
+
+    if expected_chats == 2:
+        assert chats[1]["continue_final_message"] is True
+        assert chats[1]["add_generation_prompt"] is False
+        assert chats[1]["tool_choice"] == "none"
+        assert chats[1]["messages"][-1] == {
+            "role": "assistant",
+            "content": "The answer is ",
+        }
