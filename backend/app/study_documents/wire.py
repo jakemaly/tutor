@@ -11,7 +11,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-from app.documents.schema import StudyGuide
+from app.study_documents.schema import StudyGuide
 
 BlockType = Literal[
     "paragraph", "bullets", "steps", "key_terms", "worked_example", "practice", "callout"
