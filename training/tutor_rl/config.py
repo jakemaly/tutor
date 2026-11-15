@@ -31,11 +31,18 @@ class RunConfig:
     judge: dict
     train: dict
     data: dict
+    eval: dict
+    text: str  # the TOML as written, saved next to every checkpoint
+
+    @property
+    def output_dir(self) -> Path:
+        return Path(self.train["output_dir"])
 
 
 def load_config(path: str | Path) -> RunConfig:
     path = Path(path)
-    raw = tomllib.loads(path.read_text(encoding="utf-8"))
+    text = path.read_text(encoding="utf-8")
+    raw = tomllib.loads(text)
     return RunConfig(
         path=path,
         run_name=raw["run_name"],
@@ -47,4 +54,6 @@ def load_config(path: str | Path) -> RunConfig:
         judge=raw["judge"],
         train=raw["train"],
         data=raw["data"],
+        eval=raw.get("eval", {}),
+        text=text,
     )

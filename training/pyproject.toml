@@ -4,13 +4,22 @@ version = "0.1.0"
 description = "Resource-bounded PedagogicalRL-inspired trainer for the Socratic AI Tutor (issue #46)"
 requires-python = ">=3.11"
 # The core episode, reward, and config code is standard-library only so it can be tested anywhere.
-# GPU dependencies (unsloth, trl, vllm, torch) are installed on the training machine; see README.md.
+# GPU dependencies are installed on the training machine (the molab notebook does it); torch comes
+# from the GPU image and vLLM is installed into its own venv by tutor_rl/vllm_server.py.
 dependencies = []
 
 [dependency-groups]
 dev = [
     "pytest>=8.4,<9",
     "ruff>=0.12,<1",
+]
+
+gpu = [
+    "transformers==5.23.0",
+    "peft==0.21.3",
+    "accelerate==1.15.0",
+    "datasets==5.2.0",
+    "flash-linear-attention==0.6.0",
 ]
 
 [tool.pytest.ini_options]
@@ -22,3 +31,7 @@ line-length = 100
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP"]
+
+[tool.ruff.lint.per-file-ignores]
+# marimo notebook: Markdown cells and UI one-liners read better unwrapped.
+"tutor_rl_molab.py" = ["E501"]

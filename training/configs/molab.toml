@@ -1,0 +1,84 @@
+# PedagogicalRL-inspired run sized for one molab GPU (RTX PRO 6000, 96 GB) in a 12-hour session.
+# Reference: eth-lre/PedagogicalRL config/train_rl/7b.yaml (7B tutor, Llama-3.1-8B student,
+# Qwen2.5-14B judge, 4+ GPUs). Here everything shares one GPU:
+#   student vLLM ~21 GB + judge vLLM ~15 GB + tutor bf16 LoRA training ~45 GB.
+
+run_name = "tutor-rl-qwen35-9b"
+seed = 3407
+
+[tutor]
+# Trainable policy: the same Qwen3.5-9B checkpoint the app serves (deployment/modal_qwen.py),
+# with thinking disabled. bf16 LoRA, not 4-bit QLoRA: Unsloth's Qwen3.5 guide advises against
+# QLoRA for this family because quantization error is unusually large.
+model = "Qwen/Qwen3.5-9B"
+revision = "c202236235762e1c871ad0ccb60c8ee5ba337b9a"
+enable_thinking = false
+lora_rank = 32
+lora_alpha = 32
+lora_dropout = 0.0  # keep 0 so training log-probs match the sampling distribution
+target_modules = [
+    "q_proj", "k_proj", "v_proj", "o_proj",      # full-attention layers
+    "in_proj_qkv", "in_proj_z", "out_proj",      # Gated DeltaNet (linear-attention) layers
+    "gate_proj", "up_proj", "down_proj",         # MLPs
+]
+temperature = 1.0
+top_p = 1.0
+max_tokens_per_turn = 256
+generation_batch_size = 32  # tutor turns generated together
+
+[student]
+# Simulated student, as in the paper. Gated on Hugging Face: accept the licence and set HF_TOKEN.
+model = "meta-llama/Llama-3.1-8B-Instruct"
+revision = "0e9e39f249a16976918f6564b8830bc894c89659"
+env_prefix = "TRAIN_STUDENT"  # TRAIN_STUDENT_BASE_URL / _MODEL / _API_KEY for an external endpoint
+temperature = 0.6
+max_tokens_per_turn = 256
+port = 8101
+gpu_memory_utilization = 0.22
+max_model_len = 8192
+
+[judge]
+# Leak judge, as in the paper (Qwen2.5-14B-Instruct, AWQ so it fits next to the others).
+model = "Qwen/Qwen2.5-14B-Instruct-AWQ"
+revision = "539535859b135b0244c91f3e59816150c8056698"
+env_prefix = "TRAIN_JUDGE"
+temperature = 0.0
+max_tokens = 384
+port = 8102
+gpu_memory_utilization = 0.16
+max_model_len = 8192
+share_student = false  # true: the student's server also judges (saves ~15 GB)
+
+[episode]
+max_turns = 8              # total tutor + student messages
+student_final_attempts = 2 # samples of the student's post-dialogue solution (solve rate)
+
+[reward]
+# reward = mean(student final answers correct), or -leak_penalty if the judge rejects (hard lambda).
+leak_penalty = 1.0
+end_on_rejection = true
+
+[train]
+problems_per_step = 6
+episodes_per_problem = 4   # GRPO group size
+max_steps = 60
+learning_rate = 1e-5       # LoRA wants roughly 10x a full fine-tune's rate
+warmup_steps = 3
+beta = 0.001               # KL coefficient against the base model (adapter disabled)
+max_grad_norm = 1.0
+save_steps = 10
+output_dir = "outputs/tutor-rl-qwen35-9b"  # outside git; see .gitignore
+
+[eval]
+problems = 50              # first N of the prepared eval split
+episodes_per_problem = 2
+seed = 1234
+
+[data]
+dataset = "openai/gsm8k"
+dataset_config = "main"
+revision = "740312add88f781978c0658806c59bc2815b9866"
+train_split = "train"
+train_limit = 2000
+eval_split = "test"
+eval_limit = 50

@@ -76,6 +76,6 @@ def test_group_advantages_are_centered() -> None:
     assert group_advantages([0.5, 0.5]) == [0.0, 0.0]
 
 
-def test_small_config_loads() -> None:
-    cfg = load_config(Path(__file__).parents[1] / "configs" / "small.toml")
+def test_configs_load() -> None:
+    cfg = load_config(Path(__file__).parents[1] / "configs" / "molab.toml")
     assert cfg.episode.max_turns == 8 and cfg.reward.leak_penalty == 1.0

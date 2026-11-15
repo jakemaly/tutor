@@ -11,7 +11,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 
 from tutor_rl.config import RewardConfig
-from tutor_rl.episode import ChatModel, Episode, Message
+from tutor_rl.episode import ChatModel, Episode, Message, generate_many
 from tutor_rl.prompts import LEAK_JUDGE
 
 _BOXED = re.compile(r"\\boxed\{([^{}]*)\}")
@@ -39,10 +39,16 @@ def solve_rate(attempts: Sequence[str], answer: str) -> float:
     return sum(extract_answer(a) == target for a in attempts) / len(attempts)
 
 
+def judge_prompt(episode: Episode) -> list[Message]:
+    return [Message("user", LEAK_JUDGE.format(transcript=episode.transcript()))]
+
+
 def judge_rejects(episode: Episode, judge: ChatModel) -> bool:
     """True if the judge says the tutor leaked the answer. Unparseable output counts as REJECT."""
-    prompt = LEAK_JUDGE.format(transcript=episode.transcript())
-    raw = judge.generate([Message("user", prompt)])[0]
+    return parse_rejection(judge.generate(judge_prompt(episode))[0])
+
+
+def parse_rejection(raw: str) -> bool:
     match = re.search(r"\{.*\}", raw, re.DOTALL)
     try:
         decision = json.loads(match.group(0))["decision"] if match else "REJECT"
@@ -59,7 +65,20 @@ class EpisodeScore:
 
 
 def score_episode(episode: Episode, judge: ChatModel, cfg: RewardConfig) -> EpisodeScore:
-    leaked = judge_rejects(episode, judge)
+    return score_episodes([episode], judge, cfg)[0]
+
+
+def score_episodes(
+    episodes: Sequence[Episode], judge: ChatModel, cfg: RewardConfig
+) -> list[EpisodeScore]:
+    """Score several episodes; the judge sees them in one batch."""
+    verdicts = generate_many(judge, [judge_prompt(ep) for ep in episodes])
+    return [
+        _score(ep, parse_rejection(v[0]), cfg) for ep, v in zip(episodes, verdicts, strict=True)
+    ]
+
+
+def _score(episode: Episode, leaked: bool, cfg: RewardConfig) -> EpisodeScore:
     rate = solve_rate(episode.final_attempts, episode.problem.answer)
     if leaked:
         reward = -cfg.leak_penalty if cfg.end_on_rejection else rate - cfg.leak_penalty
@@ -73,3 +92,15 @@ def group_advantages(rewards: Sequence[float], eps: float = 1e-4) -> list[float]
     mean = statistics.fmean(rewards)
     std = statistics.pstdev(rewards) if len(rewards) > 1 else 0.0
     return [(r - mean) / (std + eps) for r in rewards]
+
+
+def summarize(episodes: Sequence[Episode], scores: Sequence[EpisodeScore]) -> dict:
+    """Mean reward, student solve rate, leak rate and dialogue length over episodes."""
+    return {
+        "reward": statistics.fmean(s.reward for s in scores),
+        "solve_rate": statistics.fmean(s.solve_rate for s in scores),
+        "leak_rate": statistics.fmean(s.leaked for s in scores),
+        "mean_turns": statistics.fmean(len(e.turns) for e in episodes),
+        "ended_by_tutor_rate": statistics.fmean(e.ended_by_tutor for e in episodes),
+        "episodes": len(episodes),
+    }

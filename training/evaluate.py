@@ -1,30 +1,85 @@
 """Compare the trained checkpoint with the base tutor on the same fixed scenarios (week 2).
 
 Usage:
-    python training/evaluate.py --config training/configs/small.toml \
+    python training/evaluate.py --config training/configs/molab.toml \
+        --policy base=hf:base --policy trained=hf:outputs/tutor-rl-qwen35-9b/final/adapter
+
+    # or, once both are served through the OpenAI-compatible vLLM path:
+    python training/evaluate.py --config training/configs/molab.toml \
         --policy base=BASE_ENDPOINT_ENV_PREFIX --policy trained=TRAINED_ENDPOINT_ENV_PREFIX
 
-Both policies are reached through OpenAI-compatible endpoints (the existing Modal vLLM path),
-so the app's default provider (LLM_BASE_URL in .env) is never changed.
-Reports, per policy: mean reward, student solve rate, leak rate, and mean dialogue length,
-using the same eval problems, seeds, student, and judge for both.
+`hf:base` / `hf:<adapter dir>` load the tutor locally (one base model, adapter switched on or
+off). `<ENV_PREFIX>` reads <PREFIX>_BASE_URL / _MODEL / _API_KEY, so the app's default provider
+(LLM_BASE_URL in .env) is never changed. Reports, per policy: mean reward, student solve rate,
+leak rate, and mean dialogue length, using the same eval problems, seeds, student, and judge.
+Writes results.json, results.md and per-policy episode JSONL under <run_dir>/eval/.
 """
 
 import argparse
+from pathlib import Path
 
 from tutor_rl.config import load_config
+from tutor_rl.data import prepare_data, read_problems
+from tutor_rl.evaluation import evaluate
+from tutor_rl.openai_chat import OpenAIChatModel, model_from_section
+
+
+def build_policies(cfg, specs: list[str]):
+    """Parse NAME=hf:base | NAME=hf:<adapter> | NAME=<ENV_PREFIX>."""
+    policies, hf_adapters, hf_policy = {}, {}, None
+    for spec in specs:
+        name, _, target = spec.partition("=")
+        if target.startswith("hf:"):
+            hf_adapters[name] = target[3:]
+        else:
+            policies[name] = OpenAIChatModel.from_env(
+                target,
+                temperature=cfg.tutor.get("temperature", 1.0),
+                max_tokens=cfg.tutor.get("max_tokens_per_turn", 256),
+                extra_body={"chat_template_kwargs": {"enable_thinking": False}},
+            )
+    adapters = {n: a for n, a in hf_adapters.items() if a != "base"}
+    if len(set(adapters.values())) > 1:
+        raise SystemExit("Compare at most one local adapter per run (plus hf:base).")
+    if hf_adapters:
+        from tutor_rl.policy import load_tutor
+
+        adapter = next(iter(adapters.values()), None)
+        hf_policy = load_tutor(cfg.tutor, adapter_path=adapter, trainable=False)
+        policies.update({n: hf_policy for n in hf_adapters})
+
+    def switch(name, policy):
+        if policy is hf_policy:
+            policy.use_adapter = hf_adapters[name] != "base"
+
+    return policies, switch
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", required=True)
-    parser.add_argument("--policy", action="append", default=[], metavar="NAME=ENV_PREFIX")
+    parser.add_argument("--policy", action="append", default=[], metavar="NAME=TARGET")
+    parser.add_argument("--run-dir", help="defaults to [train].output_dir")
     args = parser.parse_args()
     cfg = load_config(args.config)
+    run_dir = Path(args.run_dir or cfg.output_dir)
+    if not args.policy:
+        parser.error("give at least one --policy")
+    if not (run_dir / "data" / "eval.jsonl").exists():
+        prepare_data(cfg, run_dir / "data")
 
-    # TODO(#46): for each policy and eval problem, run_episode + score_episode with fixed seeds,
-    # then write a results table (JSON + Markdown) under cfg.train["output_dir"].
-    raise NotImplementedError(f"Evaluation for {cfg.run_name} is not implemented yet.")
+    policies, switch = build_policies(cfg, args.policy)
+    report = evaluate(
+        cfg,
+        policies,
+        read_problems(run_dir / "data" / "eval.jsonl"),
+        model_from_section(cfg.student),
+        model_from_section(cfg.judge),
+        run_dir / "eval",
+        before_each=switch,
+    )
+    print((run_dir / "eval" / "results.md").read_text())
+    return report
 
 
 if __name__ == "__main__":
