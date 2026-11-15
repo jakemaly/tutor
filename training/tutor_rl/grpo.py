@@ -182,19 +182,27 @@ class GRPOTrainer:
         self,
         on_step: Callable[[dict], None] | None = None,
         should_stop: Callable[[], bool] | None = None,
+        on_save: Callable[[Path], None] | None = None,
     ) -> Path:
+        """Run to max_steps. `on_save(path)` runs after each checkpoint (e.g. a Hub upload)."""
         max_steps, every = self.cfg.train["max_steps"], self.cfg.train["save_steps"]
         while self.step_count < max_steps:
             metrics = self.step()
             if on_step:
                 on_step(metrics)
             if self.step_count % every == 0 or self.step_count == max_steps:
-                self.save(self.run_dir / "checkpoints" / f"step-{self.step_count:05d}")
+                path = self.save(self.checkpoint_path())
+                if on_save:
+                    on_save(path)
             if should_stop and should_stop():
                 break
-        final = self.run_dir / "final"
-        self.save(final, with_optimizer=False)
+        final = self.save(self.run_dir / "final", with_optimizer=False)
+        if on_save:
+            on_save(final)
         return final
+
+    def checkpoint_path(self) -> Path:
+        return self.run_dir / "checkpoints" / f"step-{self.step_count:05d}"
 
     def save(self, path: Path, with_optimizer: bool = True) -> Path:
         """Adapter + config + data manifest + trainer state, so a checkpoint stands alone."""
@@ -228,6 +236,12 @@ class GRPOTrainer:
         self.optimizer.load_state_dict(opt["optimizer"])
         self.scheduler.load_state_dict(opt["scheduler"])
         self.step_count = json.loads((Path(checkpoint) / "trainer_state.json").read_text())["step"]
+        # Steps logged after this checkpoint are redone, so drop their metrics rows.
+        metrics = self.run_dir / "metrics.jsonl"
+        if metrics.exists():
+            rows = metrics.read_text(encoding="utf-8").splitlines()
+            keep = [r for r in rows if r.strip() and json.loads(r)["step"] <= self.step_count]
+            metrics.write_text("".join(r + "\n" for r in keep), encoding="utf-8")
         return self.step_count
 
 

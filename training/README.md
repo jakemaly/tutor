@@ -4,9 +4,9 @@ A resource-bounded trainer inspired by PedagogicalRL ([paper](https://aclantholo
 
 ## Run it on molab
 
-Open [`tutor_rl_molab.py`](tutor_rl_molab.py) in molab with the GPU turned on, paste a Hugging Face token that can read `meta-llama/Llama-3.1-8B-Instruct`, and work down the notebook: start the servers, check the sanity dialogue, train, evaluate, export. Run the `smoke` config once before `molab`. If the notebook runs outside a checkout, it downloads the branch named in its settings, so push the branch first.
+Setup (Hugging Face org and token, molab GPU, the AI assistant, what goes where) is in [WORKFLOW.md](WORKFLOW.md). In short: open [`tutor_rl_molab.py`](tutor_rl_molab.py) in molab with the GPU on, paste a Hugging Face token, and work down the notebook: start the servers, check the sanity dialogue, train, evaluate, export. Run the `smoke` config once before `molab`.
 
-The export zip contains everything later steps need: the LoRA adapter, config, data version, per-step metrics and rollouts, base-vs-trained eval, and provenance (repo commit, model, dataset and package versions, GPU).
+Every checkpoint, the metrics, rollouts, logs, and eval results upload to a private repo in the `socratictutor` org as they are saved, and the problem set goes to a dataset repo. A new molab session resumes from the newest checkpoint on the Hub.
 
 ## Layout
 
@@ -24,7 +24,9 @@ The export zip contains everything later steps need: the LoRA adapter, config, d
 | `tutor_rl/grpo.py` | Multi-turn GRPO loss, training loop, checkpoints, resume |
 | `tutor_rl/openai_chat.py` | Student/judge client for any OpenAI-compatible endpoint (stdlib only) |
 | `tutor_rl/vllm_server.py` | Installs vLLM in its own venv and serves student and judge locally |
-| `tutor_rl/evaluation.py`, `tutor_rl/export.py` | Base-vs-trained report; zip bundle, merged weights, Hub push |
+| `tutor_rl/hub.py` | Background checkpoint uploads, resume from the Hub, dataset push |
+| `tutor_rl/evaluation.py`, `tutor_rl/export.py` | Base-vs-trained report; provenance, zip, merged weights |
+| `WORKFLOW.md` | molab + Hugging Face setup and how to run an experiment |
 | `tests/` | Fake-model tests (no GPU) |
 
 ## Compared with the paper
