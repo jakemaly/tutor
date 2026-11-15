@@ -283,11 +283,11 @@ def test_configured_graph_is_built_once_and_reused(monkeypatch) -> None:
     builds = 0
     original_create_graph = create_graph
 
-    def count_graph_builds(selected_model):
+    def count_graph_builds(selected_model, artifacts=None):
         """Count graph construction while delegating to the real graph factory."""
         nonlocal builds
         builds += 1
-        return original_create_graph(selected_model)
+        return original_create_graph(selected_model, artifacts)
 
     monkeypatch.setattr("app.main.create_chat_model", lambda _settings: model)
     monkeypatch.setattr("app.main.create_graph", count_graph_builds)

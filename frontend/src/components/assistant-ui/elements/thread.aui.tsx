@@ -2,6 +2,7 @@ import { MarkdownText } from "@/components/assistant-ui/elements/markdown-text";
 import { TooltipIconButton } from "@/components/assistant-ui/elements/tooltip-icon-button";
 import { Button } from "@/components/ui/button";
 import { ErrorState } from "@/components/error-state";
+import { DocumentCard } from "@/components/assistant-ui/elements/document-card";
 import { cn } from "@/lib/utils";
 import {
   ActionBarMorePrimitive,
@@ -249,7 +250,7 @@ const AssistantMessage: FC = () => {
       >
         <MessagePrimitive.Parts components={{
           Text: MarkdownText,
-          tools: { by_name: { load_skill: SkillToolStatus } },
+          tools: { by_name: { load_skill: SkillToolStatus, create_study_document: DocumentCard } },
         }} />
         <AuiIf
           condition={(s) =>
