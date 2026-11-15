@@ -12,9 +12,9 @@ from langchain_core.tools import ToolException, tool
 from pydantic import BaseModel, ConfigDict, ValidationError
 
 from app.artifacts import ArtifactBackend
-from app.documents import render_document
-from app.documents.schema import StudyGuide
-from app.documents.wire import WireGuide, to_study_guide
+from app.study_documents import render_document
+from app.study_documents.schema import StudyGuide
+from app.study_documents.wire import WireGuide, to_study_guide
 
 TOOL_NAME = "create_study_document"
 

@@ -8,9 +8,9 @@ from pydantic import ValidationError
 from pypdf import PdfReader
 
 from app.artifacts import ArtifactStore
-from app.documents import MAX_DOCUMENT_BYTES, render_document
-from app.documents.schema import MAX_TOTAL_CHARS, StudyGuide, answer_key, filename_stem
-from app.documents.wire import WireGuide, guide_to_dict, to_study_guide
+from app.study_documents import MAX_DOCUMENT_BYTES, render_document
+from app.study_documents.schema import MAX_TOTAL_CHARS, StudyGuide, answer_key, filename_stem
+from app.study_documents.wire import WireGuide, guide_to_dict, to_study_guide
 
 
 def guide_data(**overrides: object) -> dict[str, object]:

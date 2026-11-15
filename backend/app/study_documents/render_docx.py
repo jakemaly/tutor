@@ -12,7 +12,7 @@ from docx.oxml.ns import qn
 from docx.shared import Inches, Pt, RGBColor
 from lxml import etree
 
-from app.documents.schema import (
+from app.study_documents.schema import (
     Bullets,
     Callout,
     KeyTerms,

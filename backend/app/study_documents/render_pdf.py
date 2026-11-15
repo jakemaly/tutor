@@ -22,7 +22,7 @@ from reportlab.platypus import (
     TableStyle,
 )
 
-from app.documents.schema import (
+from app.study_documents.schema import (
     Bullets,
     Callout,
     KeyTerms,
@@ -32,7 +32,7 @@ from app.documents.schema import (
     WorkedExample,
     answer_key,
 )
-from app.documents.schema import (
+from app.study_documents.schema import (
     Paragraph as ParagraphBlock,
 )
 

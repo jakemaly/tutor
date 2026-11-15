@@ -7,8 +7,8 @@ It is not a transcript exporter and not a document editor.
 User: "Make the limit-proof part a PDF"
  -> model calls load_skill("study-document"), picks the relevant material
  -> model calls create_study_document(format, guide)   # guide = plain data, no code
- -> backend converts it (app/documents/wire.py), validates it strictly
-    (app/documents/schema.py), renders with a fixed template, stores the bytes briefly
+ -> backend converts it (app/study_documents/wire.py), validates it strictly
+    (app/study_documents/schema.py), renders with a fixed template, stores the bytes briefly
     (app/artifacts.py)
  -> tool returns a one-line confirmation to the model; artifact metadata goes to the browser
  -> chat shows a card: outline, Preview (PDF only), Download -> GET /api/artifacts/{id}
@@ -46,7 +46,7 @@ Scope the model follows is defined in `backend/app/skills/study-document/SKILL.m
   To fix it, implement `ArtifactBackend` (`put`/`get`, in `app/artifacts.py`) on shared storage
   with signed URLs and pass it as `create_app(artifacts=...)`. No other code changes.
 - Both formats use a LaTeX-style font: Latin Modern Roman with Latin Modern Math's Greek letters
-  and symbols merged in, bundled as renamed "Tutor Serif" files in `backend/app/documents/fonts`
+  and symbols merged in, bundled as renamed "Tutor Serif" files in `backend/app/study_documents/fonts`
   (renamed because the Latin Modern license requires it for modified copies; see
   `LICENSE-LatinModern.txt`). PDFs embed it, Word files carry it as an embedded font, and DejaVu
   Sans covers the odd character left. Math is plain Unicode; there is no LaTeX typesetting.

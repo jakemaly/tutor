@@ -3,9 +3,9 @@
 from dataclasses import dataclass
 from typing import Literal
 
-from app.documents.render_docx import render_docx
-from app.documents.render_pdf import render_pdf
-from app.documents.schema import StudyGuide, filename_stem
+from app.study_documents.render_docx import render_docx
+from app.study_documents.render_pdf import render_pdf
+from app.study_documents.schema import StudyGuide, filename_stem
 
 DocumentFormat = Literal["pdf", "docx"]
 MEDIA_TYPES = {
