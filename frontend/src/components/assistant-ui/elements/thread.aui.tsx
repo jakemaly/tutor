@@ -298,7 +298,7 @@ const AssistantMessage: FC = () => {
         <MessagePrimitive.Parts
           components={{
             Text: MarkdownText,
-            tools: { by_name: { load_skill: SkillToolStatus } },
+            tools: { by_name: { load_skill: SkillToolStatus, create_study_document: DocumentCard },
           }}
         />
         <AuiIf
