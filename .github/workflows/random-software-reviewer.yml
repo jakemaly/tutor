@@ -1,0 +1,77 @@
+name: Random software PR reviewer
+
+on:
+  pull_request_target:
+    types: [opened, reopened, ready_for_review]
+
+permissions:
+  pull-requests: write
+
+jobs:
+  assign-reviewer:
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    steps:
+      # This workflow uses base-branch metadata only and never checks out PR code.
+      - name: Request one software reviewer
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          SOFTWARE_REVIEWERS: '["Encoded-9", "Iman-1", "novrelyaclara", "rynky", "Varshini221", "wasiullahhh"]'
+        run: |
+          node <<'NODE'
+          const { randomInt } = require('node:crypto');
+
+          async function main() {
+            const reviewers = JSON.parse(process.env.SOFTWARE_REVIEWERS);
+            const author = process.env.PR_AUTHOR.toLowerCase();
+            const prNumber = process.env.PR_NUMBER;
+            const repository = process.env.GH_REPOSITORY;
+
+            if (!reviewers.some((login) => login.toLowerCase() === author)) {
+              console.log(`Skipping PR #${prNumber}: author is not on the software roster.`);
+              return;
+            }
+
+            const apiRoot = `https://api.github.com/repos/${repository}/pulls/${prNumber}/requested_reviewers`;
+            const headers = {
+              Accept: 'application/vnd.github+json',
+              Authorization: `Bearer ${process.env.GH_TOKEN}`,
+              'X-GitHub-Api-Version': '2026-03-10',
+            };
+
+            async function request(url, options = {}) {
+              const response = await fetch(url, { ...options, headers: { ...headers, ...options.headers } });
+              if (!response.ok) {
+                throw new Error(`GitHub API returned ${response.status}: ${await response.text()}`);
+              }
+              return response.status === 204 ? null : response.json();
+            }
+
+            const existing = await request(apiRoot);
+            const alreadyRequested = new Set((existing.users ?? []).map(({ login }) => login.toLowerCase()));
+            const candidates = reviewers.filter((login) =>
+              login.toLowerCase() !== author && !alreadyRequested.has(login.toLowerCase()),
+            );
+
+            if (candidates.length === 0) {
+              console.log(`Skipping PR #${prNumber}: no unassigned software reviewers remain.`);
+              return;
+            }
+
+            const reviewer = candidates[randomInt(candidates.length)];
+            await request(apiRoot, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ reviewers: [reviewer] }),
+            });
+            console.log(`Requested @${reviewer} to review PR #${prNumber}.`);
+          }
+
+          main().catch((error) => {
+            console.error(error);
+            process.exitCode = 1;
+          });
+          NODE
