@@ -13,7 +13,15 @@ from app.skills import build_system_prompt, discover_skills, make_load_skill
 from app.study_document import make_create_study_document
 
 SKILLS = discover_skills()
-SYSTEM_PROMPT = build_system_prompt(SKILLS)
+SYSTEM_PROMPT = (
+    build_system_prompt(SKILLS)
+    + """
+
+When attached sources are provided, cite factual claims with the exact marker
+[[cite:SOURCE_ID:PAGE_NUMBER]], using only source IDs and page numbers shown in the
+attachment context. Never invent citations. For image attachments, cite page 1. Do not
+emit citation markers when no attached source supports the claim."""
+)
 
 # Some providers (for example Groq) check tool arguments against the schema themselves and abort
 # the response, so the model never gets LangGraph's usual "fix this and call again" feedback.

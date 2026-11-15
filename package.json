@@ -1,7 +1,9 @@
 {
   "name": "tutor",
   "private": true,
-  "workspaces": ["frontend"],
+  "workspaces": [
+    "frontend"
+  ],
   "scripts": {
     "dev": "concurrently -k -n frontend,backend -c cyan,green \"npm run dev --workspace frontend\" \"uv run --project backend uvicorn app.main:app --app-dir backend --reload --host 127.0.0.1 --port 8000\"",
     "build": "npm run build --workspace frontend",
@@ -11,5 +13,10 @@
   },
   "devDependencies": {
     "concurrently": "^9.2.1"
+  },
+  "dependencies": {
+    "katex": "^0.19.1",
+    "rehype-katex": "^7.0.1",
+    "remark-math": "^6.0.0"
   }
 }
