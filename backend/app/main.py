@@ -28,9 +28,8 @@ from pydantic import BaseModel, ConfigDict
 # Local modules separate configuration, graph behavior, and endpoint-specific model setup.
 from app.artifacts import ArtifactBackend, ArtifactStore
 from app.config import Settings
-from app.graph import create_graph, is_tool_call_rejection
 from app.documents import UploadedSource, create_source
-from app.graph import create_graph
+from app.graph import create_graph, is_tool_call_rejection
 from app.models import create_chat_model
 from app.study_document import TOOL_NAME as STUDY_DOCUMENT_TOOL
 
@@ -383,9 +382,30 @@ def _finish_tool(name: str, tool: Any, artifact: Any, failed: bool) -> None:
         tool.set_response({"loaded": not failed}, is_error=failed)
 
 
-async def _stream_graph(graph: Any, messages: list[BaseMessage], controller: RunController) -> None:
-    """Forward answer text and tool status, keeping skill text and file bytes server-side."""
+async def _stream_graph(
+    graph: Any,
+    messages: list[BaseMessage],
+    controller: RunController,
+    sources: dict[str, UploadedSource],
+    allowed_ids: set[str],
+) -> None:
+    """Forward cited answer text and tool status, keeping skill text and file bytes server-side."""
     calls: dict[str, tuple[str, Any]] = {}
+    pending = ""
+    cited_links: list[str] = []
+
+    def append_text(text: str, final: bool = False) -> None:
+        nonlocal pending
+        if not allowed_ids:
+            controller.append_text(text)
+            return
+        pending += text
+        while (segment := _next_citation_segment(pending, final=final)) is not None:
+            complete, pending = segment
+            controller.append_text(
+                _render_cited_segment(complete, sources, allowed_ids, cited_links)
+            )
+
     try:
         async for mode, payload in graph.astream(
             {"messages": messages}, stream_mode=["messages", "updates"]
@@ -397,7 +417,7 @@ async def _stream_graph(graph: Any, messages: list[BaseMessage], controller: Run
                 if isinstance(chunk, AIMessageChunk):
                     text = _text_from_chunk(chunk)
                     if text:
-                        controller.append_text(text)
+                        append_text(text)
             elif mode == "updates":
                 for update in payload.values():
                     for message in update.get("messages", []):
@@ -416,6 +436,9 @@ async def _stream_graph(graph: Any, messages: list[BaseMessage], controller: Run
                         elif isinstance(message, ToolMessage) and message.tool_call_id in calls:
                             name, tool = calls.pop(message.tool_call_id)
                             _finish_tool(name, tool, message.artifact, message.status == "error")
+        append_text("", final=True)
+        if cited_links:
+            controller.append_text("\n\n**Sources:** " + " · ".join(dict.fromkeys(cited_links)))
     finally:
         # A failed or cancelled run must not leave a tool card spinning forever.
         for name, tool in calls.values():
@@ -430,61 +453,6 @@ def create_app(
     model: BaseChatModel | None = None,
     artifacts: ArtifactBackend | None = None,
 ) -> FastAPI:
-async def _stream_graph(
-    graph: Any,
-    messages: list[BaseMessage],
-    controller: RunController,
-    sources: dict[str, UploadedSource],
-    allowed_ids: set[str],
-) -> None:
-    """Forward cited answer text and skill-call status, keeping skill instructions server-side."""
-    calls = {}
-    pending = ""
-    cited_links: list[str] = []
-
-    def append_text(text: str, final: bool = False) -> None:
-        nonlocal pending
-        if not allowed_ids:
-            controller.append_text(text)
-            return
-        pending += text
-        while (segment := _next_citation_segment(pending, final=final)) is not None:
-            complete, pending = segment
-            controller.append_text(
-                _render_cited_segment(complete, sources, allowed_ids, cited_links)
-            )
-
-    async for mode, payload in graph.astream(
-        {"messages": messages}, stream_mode=["messages", "updates"]
-    ):
-        if controller.is_cancelled:
-            break
-        if mode == "messages":
-            chunk, _metadata = payload
-            if isinstance(chunk, AIMessageChunk):
-                text = _text_from_chunk(chunk)
-                if text:
-                    append_text(text)
-        elif mode == "updates":
-            for update in payload.values():
-                for message in update.get("messages", []):
-                    if isinstance(message, AIMessage):
-                        for call in message.tool_calls:
-                            if call["name"] == "load_skill":
-                                tool = await controller.add_tool_call("load_skill", call["id"])
-                                tool.append_args_text(json.dumps(call["args"]))
-                                calls[call["id"]] = tool
-                    elif isinstance(message, ToolMessage) and message.tool_call_id in calls:
-                        failed = message.status == "error"
-                        calls.pop(message.tool_call_id).set_response(
-                            {"loaded": not failed}, is_error=failed
-                        )
-    append_text("", final=True)
-    if cited_links:
-        controller.append_text("\n\n**Sources:** " + " · ".join(dict.fromkeys(cited_links)))
-
-
-def create_app(settings: Settings | None = None, model: BaseChatModel | None = None) -> FastAPI:
     """Create an app, allowing tests and other integrations to inject a chat model."""
     app_settings = settings or Settings()
     if artifacts is None:
@@ -528,6 +496,8 @@ def create_app(settings: Settings | None = None, model: BaseChatModel | None = N
                 "Cache-Control": "private, no-store",
                 "X-Content-Type-Options": "nosniff",
             },
+        )
+
     @app.put("/api/attachments/{source_id}")
     async def upload_attachment(source_id: str, request: Request) -> dict[str, Any]:
         """Store a bounded attachment after validating its claimed type and file signature."""
