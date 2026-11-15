@@ -312,7 +312,7 @@ def test_failed_run_settles_every_announced_tool_card() -> None:
     controller = FakeController()
 
     with pytest.raises(RuntimeError):
-        asyncio.run(_stream_graph(FailingGraph(), [], controller))
+        asyncio.run(_stream_graph(FailingGraph(), [], controller, {}, set()))
 
     document, skill = controller.tools
     assert document.response == ({"error": "The document could not be created."}, True)
