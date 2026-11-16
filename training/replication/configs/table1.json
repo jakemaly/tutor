@@ -1,0 +1,8 @@
+{
+  "comment": "Dataset pin for tab1_data_composition. Must equal [data] in training/configs/molab.toml (the script asserts it).",
+  "dataset": "rd211/Big-Math-RL-Verified-Filtered",
+  "revision": "80714c393abc52de4025c3e7fc6acd30f376be52",
+  "format": "bigmath",
+  "train_split": "train",
+  "test_split": "test"
+}

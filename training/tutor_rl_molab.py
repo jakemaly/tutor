@@ -1,6 +1,7 @@
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
+#     "huggingface-hub==2.4.0",
 #     "marimo",
 #     "matplotlib",
 # ]
@@ -9,7 +10,7 @@
 import marimo
 
 __generated_with = "0.25.2"
-app = marimo.App(width="medium")
+app = marimo.App(width="medium", auto_download=["html"])
 
 with app.setup:
     import importlib
@@ -35,6 +36,7 @@ with app.setup:
         "accelerate": "1.15.0",
         "datasets": "5.2.0",
         "flash-linear-attention": "0.6.0",  # fast Gated DeltaNet kernels for Qwen3.5
+        "math-verify": "0.9.0",  # symbolic answer checking for Big-Math's LaTeX answers
     }
 
 
@@ -48,11 +50,23 @@ def _():
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    # Tutor RL: PedagogicalRL-style training for Qwen3.5-9B (issue #46)
+    # Tutor RL: replicating PedagogicalRL with Qwen3.5-9B (issue #46)
 
-    Trains the app's tutor model (**Qwen3.5-9B**, thinking off, bf16 LoRA) with multi-turn GRPO against a simulated student (**Llama-3.1-8B-Instruct**, as in the paper). A **Qwen2.5-14B-Instruct-AWQ** judge checks each dialogue for answer leaks. The reward is the student's solve rate after the dialogue, or −1 if the judge says the tutor gave the answer away. The code is in `training/tutor_rl/`; this notebook only wires it together.
+    Replicates [*From Problem-Solving to Teaching Problem-Solving*](https://aclanthology.org/2025.emnlp-main.15) (Dinucu-Jianu et al., EMNLP 2025, CC BY 4.0) with the app's tutor model, **Qwen3.5-9B** (thinking off, bf16 LoRA), in place of the paper's Qwen2.5-7B. Everything else follows the paper:
 
-    **Where things live:** GitHub holds this notebook, the `tutor_rl` code, and the configs. The **`socratictutor` Hugging Face org** holds everything a run produces. Each checkpoint (adapter + optimizer), the metrics, rollouts, logs, and eval results upload to a private model repo as soon as they are saved. The problem set goes to a dataset repo. molab keeps no file over 1 GB after a shutdown and ends GPU sessions after 12 hours, so the Hub copy is the real one.
+    - **Data:** the paper's 10,000 train and 500 test Big-Math problems (`rd211/Big-Math-RL-Verified-Filtered`).
+    - **Student:** Llama-3.1-8B-Instruct (FP8).
+    - **Judges:** Qwen2.5-14B-Instruct-AWQ, using the leakage and helpfulness prompts, each sampled twice. Gemma-3-27B is the held-out leak judge for evaluation.
+    - **Prompts:** the paper's, verbatim.
+    - **Dialogues:** up to 16 messages. Either the student or the tutor opens.
+    - **Step size:** 16 problems × 8 rollouts per step, μ = 2 gradient steps per batch, β = 0.001, and 150 steps (about 300 policy updates).
+    - **Reward:** r = r_sol + (r_ped − 1)·λ + r_templ, with λ = 0.75.
+
+    The code is in `training/tutor_rl/`, and every choice the paper doesn't pin down is listed in `training/replication/spec/assumptions_and_unknowns.md`. This notebook only wires it together.
+
+    **Where things live:** GitHub holds this notebook, the `tutor_rl` code, and the configs. The **`socratictutor` Hugging Face org** holds everything a run produces. Each checkpoint (adapter + optimizer), the metrics, rollouts, logs (`logs/train.log` and the vLLM logs), and eval results upload to a private model repo as soon as they are saved. The problem set goes to a dataset repo. molab keeps no file over 1 GB after a shutdown and ends GPU sessions after 12 hours, so the Hub copy is the real one.
+
+    **How long it takes:** the paper needed about 48 hours on 4× A100. Expect the full run to span several molab sessions; each one resumes from the newest Hub checkpoint. The smoke run reports seconds per step, so you can estimate the total before committing to it.
 
     **Before you start**
 
@@ -61,7 +75,7 @@ def _(mo):
     3. Turn on the GPU in molab's notebook specs. Expected: RTX PRO 6000, 96 GB.
     4. Run **smoke** first (a few minutes after downloads), then **molab**. If the session ends, open the notebook again, keep *Resume* ticked, and it continues from the newest checkpoint on the Hub. molab also stops notebooks that sit idle for 90 minutes, so keep the tab open while training.
 
-    **GPU layout:** student vLLM ~21 GB, judge vLLM ~15 GB, tutor training ~45 GB. Each new session downloads about 45 GB of weights (a few minutes).
+    **GPU layout:** student vLLM ~19 GB, judge vLLM ~17 GB, tutor training ~55 GB. Evaluation adds the Gemma-3-27B leak judge (~25 GB). Each new session downloads about 60 GB of weights (a few minutes).
     """)
     return
 
@@ -146,7 +160,7 @@ def _(mo, repo_ref, work_root):
     if str(training_dir) not in sys.path:
         sys.path.insert(0, str(training_dir))
     mo.md(f"Code: `{training_dir}` at commit `{repo_commit}`")
-    return repo_commit, repo_dir, training_dir
+    return repo_commit, training_dir
 
 
 @app.cell
@@ -171,6 +185,18 @@ def _(mo):
     deps_ready = all(_installed(_n) == _v for _n, _v in PINS.items())
     assert deps_ready, f"Unexpected versions after install: {_versions}"
 
+    # The molab image pairs the kernel's torch with a system torchvision built for a different torch,
+    # so ``import torchvision`` raises "operator torchvision::nms does not exist". transformers imports
+    # torchvision eagerly (reached through peft), which would break every model-loading cell. This
+    # notebook is text-only, so hide torchvision and drop transformers' cached availability check.
+    sys.modules["torchvision"] = None
+    import transformers.utils.import_utils as _tf_utils
+
+    for _tf_flag in ("is_torchvision_available", "is_torchvision_v2_available"):
+        _tf_clear = getattr(getattr(_tf_utils, _tf_flag, None), "cache_clear", None)
+        if _tf_clear is not None:
+            _tf_clear()
+
     import torch
 
     assert torch.cuda.is_available(), "No GPU: turn on the GPU in molab's notebook specs."
@@ -179,6 +205,7 @@ def _(mo):
         f"GPU: **{_p.name}**, {_p.total_memory / 1024**3:.0f} GB, CUDA {torch.version.cuda}  \n"
         f"Packages: `{_versions}`"
     )
+
     return (deps_ready,)
 
 
@@ -216,10 +243,15 @@ def _(
     | --- | --- | --- |
     | Tutor (trained) | `{cfg.tutor['model']}` | `{cfg.tutor['revision'][:12]}` |
     | Student | `{cfg.student['model']}` | `{cfg.student['revision'][:12]}` |
-    | Judge | `{cfg.judge['model'] if not cfg.judge['share_student'] else cfg.student['model'] + ' (shared)'}` | |
+    | Judge | `{cfg.judge['model'] if not cfg.judge['share_student'] else cfg.student['model'] + ' (shared)'}` | `{cfg.judge['revision'][:12]}` |
+    | Eval leak judge | `{cfg.eval_judge.get('model', '(training judge)')}` | `{cfg.eval_judge.get('revision', '')[:12]}` |
 
-    {_t['max_steps']} steps × {_t['problems_per_step']} problems × {_t['episodes_per_problem']} episodes,
-    up to {cfg.episode.max_turns} messages each, lr {_t['learning_rate']}, β {_t['beta']},
+    {_t['max_steps']} steps × {_t['problems_per_step']} problems × {_t['episodes_per_problem']} rollouts
+    ({_t['max_steps'] * _t.get('num_iterations', 1)} policy updates, μ = {_t.get('num_iterations', 1)}),
+    up to {cfg.episode.max_turns} messages, K = {cfg.episode.student_final_attempts} final solutions,
+    opener {cfg.episode.initiator}, λ = {cfg.reward.lam}{' (hard)' if cfg.reward.hard else ''},
+    judges {', '.join(cfg.reward.judges)} × {cfg.reward.samples_per_judge},
+    lr {_t['learning_rate']} ({_t.get('lr_scheduler', 'linear')}), β {_t['beta']},
     LoRA r={cfg.tutor['lora_rank']}, checkpoint every {_t['save_steps']} steps.
     """)
     return cfg, run_dir
@@ -236,11 +268,15 @@ def _(cfg, mo, run_dir):
         data_manifest = prepare_data(cfg, _data_dir)
     train_problems = read_problems(_data_dir / "train.jsonl")
     eval_problems = read_problems(_data_dir / "eval.jsonl")
+    _sources = data_manifest["files"]["train.jsonl"].get("sources", {})
     mo.md(
         f"Data version `{data_manifest['data_version']}`: {len(train_problems)} train / "
         f"{len(eval_problems)} eval problems from `{data_manifest['dataset']}` "
-        f"@ `{data_manifest['revision'][:12]}`. Example: *{train_problems[0].question}* → "
-        f"`{train_problems[0].answer}`"
+        f"@ `{data_manifest['revision'][:12]}`.  \n"
+        f"Train sources: {', '.join(f'{_k} {_v}' for _k, _v in _sources.items())} "
+        f"(paper Table 1: big_math 3360, cn_k12 3324, math 1264, aops_forum 1263, omnimath 374, "
+        f"openmath 315, gsm8k 100).  \n"
+        f"Example: *{train_problems[0].question}* → `{train_problems[0].answer}`"
     )
     return data_manifest, eval_problems, train_problems
 
@@ -251,7 +287,7 @@ def _(cfg, data_manifest, hub_org, hub_run_name, hub_sync, mo, run_dir):
     from tutor_rl.hub import HubSync, push_dataset
 
     hub_repo_id = f"{hub_org.value.strip()}/{hub_run_name.value.strip() or cfg.run_name}"
-    hub_dataset_id = f"{hub_org.value.strip()}/tutor-rl-gsm8k"
+    hub_dataset_id = f"{hub_org.value.strip()}/{cfg.data.get('hub_dataset', 'pedagogicalrl-bigmath')}"
     if hub_sync.value:
         _token = os.environ.get("HF_TOKEN")
         assert _token, "Paste a Hugging Face token above (or untick the Hub upload option)."
@@ -290,24 +326,33 @@ def _(mo):
 
 @app.cell
 def _(cfg, mo, run_dir, start_servers, work_root):
-    mo.stop(not start_servers.value, mo.md("*Click to start the servers.*"))
     from huggingface_hub import model_info
 
     from tutor_rl.vllm_server import ensure_vllm_env, start_student_and_judge
+    from tutor_rl.vllm_server import served_models as _served_models
 
-    try:  # fail fast on the gated Llama repo instead of deep inside vLLM's logs
-        model_info(cfg.student["model"], revision=cfg.student["revision"], token=os.environ.get("HF_TOKEN"))
-    except Exception as _e:
-        raise RuntimeError(
-            f"Cannot access {cfg.student['model']}: accept its licence on Hugging Face and "
-            f"paste a token above. ({type(_e).__name__})"
-        ) from None
+    # Start on click, but also re-adopt servers that are already running: this cell re-runs whenever
+    # `cfg` changes (e.g. editing max_steps), and halting there would wipe `servers` for every cell
+    # below it (the tutor load, training, …).
+    _ports = [cfg.student["port"]] + ([] if cfg.judge.get("share_student") else [cfg.judge["port"]])
+    _already_up = all(_served_models(f"http://127.0.0.1:{_p}/v1") for _p in _ports)
+    mo.stop(not (start_servers.value or _already_up), mo.md("*Click to start the servers.*"))
+
+    if not _already_up:  # fail fast on the gated Llama repo instead of deep inside vLLM's logs
+        try:
+            model_info(cfg.student["model"], revision=cfg.student["revision"], token=os.environ.get("HF_TOKEN"))
+        except Exception as _e:
+            raise RuntimeError(
+                f"Cannot access {cfg.student['model']}: accept its licence on Hugging Face and "
+                f"paste a token above. ({type(_e).__name__})"
+            ) from None
 
     with mo.status.spinner(title="Installing vLLM (first run only)…"):
         _vllm_bin = ensure_vllm_env(Path(work_root.value) / "vllm-env")
     with mo.status.spinner(title="Starting student and judge (downloads weights on first run)…"):
         servers = start_student_and_judge(cfg, _vllm_bin, run_dir / "logs")
     mo.md("Running: " + ", ".join(f"`{_s.name}` at {_s.base_url}" for _s in servers))
+
     return (servers,)
 
 
@@ -347,30 +392,70 @@ def _(cfg, deps_ready, mo, servers):
     with mo.status.spinner(title=f"Loading {cfg.tutor['model']} (bf16 + LoRA)…"):
         tutor = load_tutor(cfg.tutor)
     student = model_from_section(cfg.student)
+    # The pre- and post-dialog solutions are full step-by-step answers: a larger token budget.
+    final_student = model_from_section(cfg.student, max_tokens_key="max_tokens_final")
     judge = model_from_section(cfg.judge)
     _trainable = sum(_p.numel() for _p in tutor.model.parameters() if _p.requires_grad)
     mo.md(f"Tutor loaded: {_trainable / 1e6:.1f}M trainable LoRA parameters.")
-    return judge, student, tutor
+    return final_student, judge, student, tutor
+
+
+@app.function
+def rollout_view(r: dict, title: str):
+    """One scored dialogue (a rollouts/*.jsonl or eval episodes row) as a collapsible entry."""
+    import marimo as mo
+
+    chat = "\n\n".join(
+        f"**{'Teacher' if t['speaker'] == 'tutor' else 'Student'}:** {t['content']}"
+        for t in r["turns"]
+    )
+    cut = [s.get("truncated", False) for s in r.get("tutor_steps", [])]
+    judges = {
+        f"{kind} judge, sample {i + 1}": mo.md(f"```\n{out}\n```")
+        for kind, outs in r.get("judge_outputs", {}).items()
+        for i, out in enumerate(outs)
+    }
+    for i, out in enumerate(r.get("eval_judge_outputs", [])):
+        judges[f"eval leak judge, sample {i + 1}"] = mo.md(f"```\n{out}\n```")
+    finals = "\n\n".join(f"{i + 1}. {a}" for i, a in enumerate(r["final_attempts"]))
+    body = mo.vstack([
+        mo.md(
+            f"**Problem** ({r['problem'].get('source', '')}, answer `{r['problem']['answer']}`): "
+            f"{r['problem']['question']}\n\n*Opened by the {r.get('initiator', 'student')}.*"
+        ),
+        mo.md(chat),
+        mo.md(
+            f"**Reward** {r['reward']:.2f} = r_sol {r['solve_rate']:.2f} "
+            f"+ r_templ {r.get('template', 0):.2f} "
+            f"{'' if r.get('accepted', True) else '− λ (judges rejected)'} · "
+            f"rejected by: {r.get('rejected_by', {})} · ended by tutor {r['ended_by_tutor']} · "
+            f"cut-off turns {sum(cut)}"
+            + (f" · advantage {r['advantage']:.2f}" if "advantage" in r else "")
+        ),
+        mo.accordion({"Student's final solutions": mo.md(finals), **judges}),
+    ])
+    return (title, body)
 
 
 @app.cell
-def _(cfg, eval_problems, judge, mo, student, tutor):
+def _(cfg, eval_problems, final_student, judge, mo, student, tutor):
     from tutor_rl.episode import run_episodes
-    from tutor_rl.rewards import score_episodes
+    from tutor_rl.rewards import score_dict, score_episodes
 
+    # One dialogue per opener with the base tutor: checks prompts, student, and both judges.
     tutor.use_adapter = False
-    _ep = run_episodes(eval_problems[:1], tutor, student, cfg.episode)[0]
-    _score = score_episodes([_ep], judge, cfg.reward)[0]
+    _eps = run_episodes(
+        [eval_problems[0], eval_problems[0]], tutor, student, cfg.episode,
+        initiators=["student", "tutor"], final_student=final_student,
+    )
+    _scores = score_episodes(_eps, judge, cfg.reward)
     tutor.use_adapter = True
-    _rows = "\n\n".join(f"**{_t.speaker}:** {_t.content}" for _t in _ep.turns)
     mo.vstack([
-        mo.md(f"**Problem** ({_ep.problem.answer}): {_ep.problem.question}"),
-        mo.md(_rows),
-        mo.md(
-            f"**Student's final attempts:** {_ep.final_attempts}  \n"
-            f"reward {_score.reward:.2f}, solve rate {_score.solve_rate:.2f}, "
-            f"leaked {_score.leaked}, ended by tutor {_ep.ended_by_tutor}"
-        ),
+        mo.md("**Sanity check: base tutor, one dialogue per opener**"),
+        mo.accordion(dict(
+            rollout_view({**_e.to_dict(), **score_dict(_s)}, f"{_e.initiator}-initiated · reward {_s.reward:.2f}")
+            for _e, _s in zip(_eps, _scores)
+        )),
     ])
     return
 
@@ -380,7 +465,7 @@ def _(mo):
     mo.md(r"""
     ## 4. Train
 
-    Each step logs to `metrics.jsonl` and `rollouts/step-*.jsonl` and updates the plot below. To stop early, interrupt the cell: the current step is saved as a checkpoint, and **Resume** picks it up later (also after a new molab session, if the work directory survived).
+    Each step appends to `metrics.jsonl`, `rollouts/step-*.jsonl` and `logs/train.log`, and refreshes the live view below: a status line, the newest `train.log` lines, and that step's dialogues. The full graphs and logs have their own sections after this one, and you can reopen them at any time, including in a new session. To stop early, interrupt the cell: the current step is saved as a checkpoint, and **Resume** picks it up later, also from the Hub after a new molab session.
     """)
     return
 
@@ -394,25 +479,6 @@ def _(mo):
 
 
 @app.function
-def plot_metrics(rows):
-    import matplotlib.pyplot as plt
-
-    fig, axes = plt.subplots(1, 4, figsize=(14, 3))
-    steps = [r["step"] for r in rows]
-    for ax, key in zip(axes, ["reward", "solve_rate", "leak_rate", "kl"]):
-        values = [r.get(key, float("nan")) for r in rows]
-        ax.plot(steps, values, marker=".", alpha=0.5)
-        if len(values) >= 5:
-            smooth = [sum(values[max(0, i - 4) : i + 1]) / len(values[max(0, i - 4) : i + 1]) for i in range(len(values))]
-            ax.plot(steps, smooth)
-        ax.set_title(key)
-        ax.set_xlabel("step")
-    fig.tight_layout()
-    plt.close(fig)
-    return fig
-
-
-@app.function
 def read_metrics(run_dir):
     path = Path(run_dir) / "metrics.jsonl"
     if not path.exists():
@@ -420,15 +486,51 @@ def read_metrics(run_dir):
     return [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
 
 
+@app.function
+def log_tail(path, lines=40):
+    path = Path(path)
+    if not path.exists():
+        return f"({path.name} does not exist yet)"
+    return "\n".join(path.read_text(encoding="utf-8", errors="replace").splitlines()[-lines:])
+
+
+@app.cell
+def _(mo):
+    def show_rollouts(run_dir, step):
+        path = Path(run_dir) / "rollouts" / f"step-{step:05d}.jsonl"
+        if not path.exists():
+            return mo.md(f"_No chat logs for step {step} yet._")
+        items = []
+        for i, line in enumerate(path.read_text(encoding="utf-8").splitlines()):
+            r = json.loads(line)
+            if "accepted" not in r:  # written by the pre-replication trainer
+                continue
+            title = (
+                f"Dialogue {i + 1} · {r['problem']['id']} · {r.get('initiator', '?')} opens · "
+                f"reward {r['reward']:.2f} · solve {r['solve_rate']:.2f} · "
+                f"{'accepted' if r['accepted'] else 'rejected'}"
+            )
+            items.append(rollout_view(r, title))
+        return mo.vstack([
+            mo.md(f"**Chat logs, step {step}** ({len(items)} dialogues; each group of "
+                  "rollouts on the same problem is consecutive)"),
+            mo.accordion(dict(items)),
+        ])
+
+    return (show_rollouts,)
+
+
 @app.cell
 def _(
     cfg,
+    final_student,
     hub,
     hub_repo_id,
     judge,
     mo,
     resume,
     run_dir,
+    show_rollouts,
     student,
     train_button,
     train_problems,
@@ -437,6 +539,7 @@ def _(
     mo.stop(not train_button.value, mo.md("*Click **Train** to start.*"))
     from tutor_rl.grpo import GRPOTrainer
     from tutor_rl.hub import fetch_for_resume
+    from tutor_rl.plots import training_dashboard
 
     if resume.value and hub is not None:  # a new molab session: pull the newest Hub checkpoint
         with mo.status.spinner(title="Looking for a checkpoint on the Hub…"):
@@ -444,10 +547,12 @@ def _(
 
     if not resume.value:  # fresh run: set the previous attempt aside instead of mixing them
         _stamp = int(time.time())
-        for _name in ("metrics.jsonl", "rollouts", "checkpoints", "final"):
+        for _name in ("metrics.jsonl", "rollouts", "checkpoints", "final", "logs/train.log"):
             if (run_dir / _name).exists():
-                (run_dir / _name).rename(run_dir / f"previous-{_stamp}-{_name}")
-    trainer = GRPOTrainer(cfg, tutor, student, judge, train_problems, run_dir)
+                (run_dir / _name).rename(run_dir / f"previous-{_stamp}-{_name.replace('/', '-')}")
+    trainer = GRPOTrainer(
+        cfg, tutor, student, judge, train_problems, run_dir, final_student=final_student
+    )
     _start = trainer.resume() if resume.value else 0
     _history = [_r for _r in read_metrics(run_dir) if _r["step"] <= _start]
     _total = cfg.train["max_steps"]
@@ -456,14 +561,19 @@ def _(
     def _show(m):
         _history.append(m)
         _done = m["step"] - _start
-        _eta = (time.time() - _t0) / _done * (_total - m["step"]) / 60
+        _eta = (time.time() - _t0) / _done * (_total - m["step"]) / 3600
         mo.output.replace(mo.vstack([
             mo.md(
-                f"Step **{m['step']}/{_total}**, reward {m['reward']:.3f}, solve {m['solve_rate']:.2f}, "
-                f"leak {m['leak_rate']:.2f}, {m['step_seconds']:.0f} s/step, ~{_eta:.0f} min left, "
-                f"peak GPU {m['max_gpu_gb']} GB"
+                f"Step **{m['step']}/{_total}** ({m.get('policy_updates', '?')} policy updates) · "
+                f"reward {m['reward']:.3f} · r_sol {m['solve_rate']:.2f} · accepted {m['accept_rate']:.2f} "
+                f"(leakage rejects {m.get('leakage_reject_rate', 0):.2f}, helpfulness rejects "
+                f"{m.get('helpfulness_reject_rate', 0):.2f}) · {m['step_seconds'] / 60:.1f} min/step "
+                f"(dialogues {m['dialog_seconds'] / 60:.1f}, judges {m['judge_seconds'] / 60:.1f}) · "
+                f"~{_eta:.1f} h left · peak GPU {m['max_gpu_gb']} GB"
             ),
-            plot_metrics(_history),
+            training_dashboard(_history),
+            mo.accordion({"logs/train.log (last 15 lines)": mo.md(f"```\n{log_tail(run_dir / 'logs' / 'train.log', 15)}\n```")}),
+            show_rollouts(run_dir, m["step"]),
         ]))
 
     def _upload(path):
@@ -485,33 +595,124 @@ def _(
     _where = f" and [on the Hub]({hub.url})" if hub is not None else ""
     mo.output.replace(mo.vstack([
         mo.md(f"Done. Final adapter: `{trained_adapter}`{_where}."),
-        plot_metrics(_history),
+        training_dashboard(_history),
+        show_rollouts(run_dir, trainer.step_count),
     ]))
-    return (trained_adapter,)
+    return
 
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ## 5. Evaluate base vs. trained
+    ## 5. Training graphs and logs
 
-    Same eval problems, sampling seeds, student, and judge for both. The trained side uses `final/adapter` from the run directory, so this also works in a new session after a finished run.
+    These read the run directory, so they work during training (click refresh) and in a later session. The **Fetch from Hub** button first downloads `metrics.jsonl`, the rollouts, and the logs of a run that trained elsewhere.
+
+    How to read the graphs: **reward** and **r_sol** should rise, and **leakage rejects** should fall. **KL** should stay small (well under 0.1). Many **groups with no signal** means most problems are too easy or too hard for the student, so those steps teach little. A rising **cut-off turns** rate means the tutor is writing turns longer than `max_tokens_per_turn`.
     """)
     return
 
 
 @app.cell
 def _(mo):
-    eval_button = mo.ui.run_button(label="Evaluate base vs. trained")
-    eval_button
-    return (eval_button,)
+    refresh_graphs = mo.ui.run_button(label="Refresh graphs and logs")
+    fetch_hub_logs = mo.ui.run_button(label="Fetch metrics, rollouts and logs from the Hub")
+    smooth_window = mo.ui.slider(start=1, stop=30, value=10, show_value=True, label="Moving average (steps)")
+    mo.hstack([refresh_graphs, fetch_hub_logs, smooth_window], justify="start")
+    return fetch_hub_logs, refresh_graphs, smooth_window
 
 
 @app.cell
-def _(cfg, eval_button, eval_problems, hub, hub_repo_id, judge, mo, run_dir, student, tutor):
+def _(fetch_hub_logs, hub_repo_id, mo, refresh_graphs, run_dir, smooth_window):
+    refresh_graphs.value  # re-run on click
+    from tutor_rl.plots import training_dashboard as _dashboard
+
+    if fetch_hub_logs.value:
+        from huggingface_hub import snapshot_download as _snapshot
+
+        with mo.status.spinner(title=f"Downloading logs from {hub_repo_id}…"):
+            _snapshot(
+                hub_repo_id, local_dir=str(run_dir), token=os.environ.get("HF_TOKEN"),
+                allow_patterns=["metrics.jsonl", "rollouts/**", "logs/**"],
+            )
+    _rows = read_metrics(run_dir)
+    _logs = {
+        _p.name: mo.md(f"```\n{log_tail(_p, 200)}\n```")
+        for _p in sorted((run_dir / "logs").glob("*.log"))
+    } if (run_dir / "logs").exists() else {}
+    mo.vstack([
+        mo.md(f"`{run_dir / 'metrics.jsonl'}`: {len(_rows)} steps logged."),
+        _dashboard(_rows, window=smooth_window.value),
+        mo.md("**Logs** (last 200 lines each: the trainer's `train.log` and each vLLM server)"),
+        mo.ui.tabs(_logs) if _logs else mo.md("_No logs yet._"),
+    ])
+    return
+
+
+@app.cell
+def _(mo, refresh_graphs, run_dir):
+    refresh_graphs.value
+    _n = len(list((run_dir / "rollouts").glob("step-*.jsonl")))
+    log_step = mo.ui.slider(start=1, stop=max(_n, 1), value=max(_n, 1), show_value=True, label="Chat logs for step")
+    log_step
+    return (log_step,)
+
+
+@app.cell
+def _(log_step, run_dir, show_rollouts):
+    show_rollouts(run_dir, log_step.value)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## 6. Evaluate base vs. trained (the paper's Table 2)
+
+    The paper's in-domain evaluation runs on the 500 held-out Big-Math problems, with the same openers, sampling seeds, student and judges for both tutors. It reports:
+
+    - **Δ solve rate:** the student's post-dialog solve rate minus its pre-dialog chain-of-thought solve rate, in percentage points.
+    - **Leaked solutions:** the share of dialogues the **Gemma-3-27B** leak judge rejects. The paper uses a judge from another model family at test time, so the tutor is never scored by the judge it trained against.
+
+    The trained side uses `final/adapter`, so this also works in a new session after a finished run. With 500 dialogues per tutor, expect roughly an hour.
+    """)
+    return
+
+
+@app.cell
+def _(mo):
+    use_eval_judge = mo.ui.checkbox(True, label="Start the Gemma-3-27B leak judge (paper's test-time judge, ~25 GB)")
+    eval_button = mo.ui.run_button(label="Evaluate base vs. trained")
+    mo.hstack([eval_button, use_eval_judge], justify="start")
+    return eval_button, use_eval_judge
+
+
+@app.cell
+def _(
+    cfg,
+    eval_button,
+    eval_problems,
+    final_student,
+    hub,
+    hub_repo_id,
+    judge,
+    mo,
+    run_dir,
+    student,
+    tutor,
+    use_eval_judge,
+    work_root,
+):
     mo.stop(not eval_button.value, mo.md("*Click to evaluate.*"))
+    import gc
+
+    import torch as _torch
+
     from tutor_rl.evaluation import evaluate
+    from tutor_rl.openai_chat import model_from_section as _from_section
     from tutor_rl.policy import load_adapter_weights
+    from tutor_rl.vllm_server import ensure_vllm_env as _ensure_vllm
+    from tutor_rl.vllm_server import start_eval_judge
 
     _adapter = run_dir / "final" / "adapter"
     if not _adapter.exists() and hub is not None:  # trained in an earlier session
@@ -524,25 +725,85 @@ def _(cfg, eval_button, eval_problems, hub, hub_repo_id, judge, mo, run_dir, stu
     assert _adapter.exists(), f"No trained adapter at {_adapter}; train first."
     load_adapter_weights(tutor, _adapter)
 
+    _eval_judge = None
+    if use_eval_judge.value and cfg.eval_judge:
+        gc.collect()
+        _torch.cuda.empty_cache()  # give the training run's cached blocks back for vLLM
+        with mo.status.spinner(title=f"Starting {cfg.eval_judge['model']} (downloads ~20 GB once)…"):
+            start_eval_judge(cfg, _ensure_vllm(Path(work_root.value) / "vllm-env"), run_dir / "logs")
+        _eval_judge = _from_section(cfg.eval_judge)
+
     def _switch(name, policy):
         policy.use_adapter = name == "trained"
 
-    with mo.status.spinner(title="Evaluating…"):
-        eval_report = evaluate(
+    with mo.status.progress_bar(total=5, title="Evaluating…", remove_on_exit=True) as _bar:
+        evaluate(
             cfg, {"base": tutor, "trained": tutor}, eval_problems, student, judge,
-            run_dir / "eval", before_each=_switch,
+            run_dir / "eval", before_each=_switch, eval_judge=_eval_judge,
+            final_student=final_student,
+            on_progress=lambda _msg: _bar.update(title=_msg),
         )
     tutor.use_adapter = True
     if hub is not None:
-        hub.upload_run(run_dir, include=["eval/**"], message="Evaluation").result()
-    mo.md((run_dir / "eval" / "results.md").read_text())
+        hub.upload_run(run_dir, include=["eval/**", "logs/**"], message="Evaluation").result()
+    mo.md(f"Evaluation written to `{run_dir / 'eval'}`" + (" and uploaded." if hub else "."))
+    return
+
+
+@app.cell
+def _(eval_button, fetch_hub_logs, hub_repo_id, mo, run_dir):
+    eval_button.value, fetch_hub_logs.value  # refresh after an evaluation or a Hub fetch
+    from tutor_rl.plots import eval_bars, eval_tradeoff
+
+    _results = run_dir / "eval" / "results.json"
+    if not _results.exists() and os.environ.get("HF_TOKEN"):
+        try:  # evaluated in an earlier session
+            from huggingface_hub import snapshot_download as _snap
+
+            _snap(hub_repo_id, local_dir=str(run_dir), allow_patterns=["eval/**"], token=os.environ["HF_TOKEN"])
+        except Exception:  # noqa: BLE001 - no run repo yet
+            pass
+    mo.stop(not _results.exists(), mo.md("_No evaluation results yet._"))
+    eval_report = json.loads(_results.read_text())
+    mo.vstack([
+        eval_tradeoff(eval_report),
+        eval_bars(eval_report),
+        mo.md((run_dir / "eval" / "results.md").read_text(encoding="utf-8")),
+    ])
     return (eval_report,)
+
+
+@app.cell
+def _(eval_report, mo):
+    eval_policy = mo.ui.dropdown(list(eval_report["results"]), value=list(eval_report["results"])[-1], label="Eval dialogues for")
+    eval_only = mo.ui.dropdown(["all", "leaked (eval judge)", "not leaked"], value="all", label="Show")
+    mo.hstack([eval_policy, eval_only], justify="start")
+    return eval_only, eval_policy
+
+
+@app.cell
+def _(eval_only, eval_policy, mo, run_dir):
+    _rows = [
+        json.loads(_l)
+        for _l in (run_dir / "eval" / f"episodes-{eval_policy.value}.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    if eval_only.value != "all":
+        _rows = [_r for _r in _rows if _r["eval_leaked"] == (eval_only.value.startswith("leaked"))]
+    mo.vstack([
+        mo.md(f"{len(_rows)} dialogues (first 50 shown)"),
+        mo.accordion(dict(
+            rollout_view(_r, f"{_r['problem']['id']} · solve {_r['solve_rate']:.2f} · "
+                             f"{'LEAKED' if _r['eval_leaked'] else 'no leak'}")
+            for _r in _rows[:50]
+        )),
+    ])
+    return
 
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ## 6. Export
+    ## 7. Export
 
     Writes `provenance.json` (repo commit, model and dataset revisions, package versions, GPU) and uploads it to the run repo. With Hub upload on, the run repo then holds everything: checkpoints, `final/adapter`, metrics, rollouts, logs, eval, and provenance.
 

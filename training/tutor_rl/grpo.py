@@ -1,28 +1,32 @@
-"""Multi-turn GRPO for the tutor (steps 1-5 of train.py's docstring).
+"""Multi-turn GRPO for the tutor (paper section 5.3 and appendix A.2).
 
 TRL's GRPOTrainer scores one completion per prompt; here an episode has several tutor turns,
-so the loss is written directly (as the authors did in eth-lre/PedagogicalRL src/grpo/trainer.py):
-every tutor turn of an episode is a (prompt, completion) sample that shares the episode's group
-advantage, student and system tokens are never scored, and the loss is averaged over all tutor
-tokens in the step. Rollouts are on-policy with one update per batch, so the importance ratio is
-1 and needs no clipping. KL is the k3 estimator against the base model (adapter disabled).
+so the loss is written directly: every tutor turn of an episode is a (prompt, completion) sample
+that shares the episode's group advantage, student and system tokens are never scored, no
+discounting, and the loss is averaged over all tutor tokens in the batch.
+
+Each batch of rollouts gets `num_iterations` optimizer steps (the paper's mu = 2). The first
+pass is exactly on-policy (ratio 1); later passes use the PPO clipped ratio against the
+log-probs recorded on the first pass. KL is the k3 estimator against the base model (adapter
+disabled), computed once per batch.
 """
 
 import json
+import logging
 import random
 import shutil
 import statistics
 import time
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import torch
 
 from tutor_rl.config import RunConfig
-from tutor_rl.episode import ChatModel, Episode, Problem, run_episodes
+from tutor_rl.episode import ChatModel, Episode, Problem, pick_initiators, run_episodes
 from tutor_rl.policy import HFTutorPolicy, load_adapter_weights
-from tutor_rl.rewards import group_advantages, score_episodes, summarize
+from tutor_rl.rewards import group_advantages, score_dict, score_episodes, summarize
 
 
 @dataclass
@@ -30,6 +34,8 @@ class Sample:
     prompt_ids: list[int]
     completion_ids: list[int]
     advantage: float
+    old_logp: torch.Tensor | None = field(default=None, repr=False)  # filled on the first pass
+    ref_logp: torch.Tensor | None = field(default=None, repr=False)
 
 
 def build_samples(
@@ -58,6 +64,25 @@ def completion_logprobs(model, sample: Sample, temperature: float) -> torch.Tens
     return torch.log_softmax(logits, dim=-1).gather(-1, targets[:, None]).squeeze(-1)
 
 
+def make_logger(run_dir: Path) -> logging.Logger:
+    """A per-run logger writing to logs/train.log (uploaded with every checkpoint)."""
+    log = logging.getLogger(f"tutor_rl.{run_dir.resolve()}")
+    log.setLevel(logging.INFO)
+    log.propagate = False
+    path = run_dir / "logs" / "train.log"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    target = str(path.resolve())
+    for h in list(log.handlers):  # reopen if the file was moved aside (a fresh, non-resumed run)
+        if getattr(h, "baseFilename", None) == target and not path.exists():
+            log.removeHandler(h)
+            h.close()
+    if not any(getattr(h, "baseFilename", None) == target for h in log.handlers):
+        handler = logging.FileHandler(path, encoding="utf-8")
+        handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
+        log.addHandler(handler)
+    return log
+
+
 class GRPOTrainer:
     def __init__(
         self,
@@ -68,22 +93,40 @@ class GRPOTrainer:
         train_problems: list[Problem],
         run_dir: Path,
         data_dir: Path | None = None,
+        final_student: ChatModel | None = None,
     ) -> None:
         self.cfg, self.policy, self.student, self.judge = cfg, policy, student, judge
+        self.final_student = final_student
         self.problems = train_problems
         self.run_dir = Path(run_dir)
         self.data_dir = Path(data_dir) if data_dir else self.run_dir / "data"
         t = cfg.train
+        self.iterations = int(t.get("num_iterations", 1))
         self.params = [p for p in policy.model.parameters() if p.requires_grad]
         self.optimizer = torch.optim.AdamW(
-            self.params, lr=t["learning_rate"], betas=(0.9, 0.99), weight_decay=0.0
+            self.params,
+            lr=t["learning_rate"],
+            betas=(t.get("adam_beta1", 0.9), t.get("adam_beta2", 0.999)),
+            weight_decay=t.get("weight_decay", 0.0),
         )
-        warmup = max(1, t.get("warmup_steps", 0))
+        # A plain function (not a bound method), so the scheduler state saves and loads cleanly.
         self.scheduler = torch.optim.lr_scheduler.LambdaLR(
-            self.optimizer, lambda s: min(1.0, (s + 1) / warmup)
+            self.optimizer, lambda update: self._lr_factor(update)
         )
         self.step_count = 0
+        self.log = make_logger(self.run_dir)
         (self.run_dir / "rollouts").mkdir(parents=True, exist_ok=True)
+
+    def _lr_factor(self, update: int) -> float:
+        """Linear warmup, then constant or linear decay to 0 (TRL's default) over all updates."""
+        t = self.cfg.train
+        warmup = t.get("warmup_steps", 0) * self.iterations
+        total = max(1, t["max_steps"] * self.iterations)
+        if warmup and update < warmup:
+            return (update + 1) / warmup
+        if t.get("lr_scheduler", "linear") == "constant":
+            return 1.0
+        return max(0.0, (total - update) / max(1, total - warmup))
 
     # ----- data --------------------------------------------------------------------------
     def next_problems(self) -> list[Problem]:
@@ -101,12 +144,24 @@ class GRPOTrainer:
     def step(self) -> dict:
         t, start = self.cfg.train, time.time()
         group = t["episodes_per_problem"]
-        problems = [p for p in self.next_problems() for _ in range(group)]
+        unique = self.next_problems()
+        rng = random.Random(self.cfg.seed * 1_000_003 + self.step_count)
+        openers = pick_initiators(len(unique), self.cfg.episode, rng)
+        problems = [p for p in unique for _ in range(group)]
+        initiators = [who for who in openers for _ in range(group)]
 
         torch.manual_seed(self.cfg.seed + self.step_count)
         self.policy.records.clear()
         self.policy.use_adapter = True
-        episodes = run_episodes(problems, self.policy, self.student, self.cfg.episode)
+        episodes = run_episodes(
+            problems,
+            self.policy,
+            self.student,
+            self.cfg.episode,
+            initiators=initiators,
+            final_student=self.final_student,
+        )
+        dialog_time = time.time() - start
         scores = score_episodes(episodes, self.judge, self.cfg.reward)
         advantages = []
         for g in range(0, len(scores), group):
@@ -124,9 +179,16 @@ class GRPOTrainer:
                 statistics.pstdev([s.reward for s in scores[g : g + group]])
                 for g in range(0, len(scores), group)
             ),
+            "zero_signal_groups": sum(
+                len({s.reward for s in scores[g : g + group]}) == 1
+                for g in range(0, len(scores), group)
+            )
+            / len(unique),
             "samples": len(samples),
             "tutor_tokens": sum(len(s.completion_ids) for s in samples),
             "lr": self.scheduler.get_last_lr()[0],
+            "dialog_seconds": round(dialog_time, 1),
+            "judge_seconds": round(rollout_time - dialog_time, 1),
             "rollout_seconds": round(rollout_time, 1),
             "step_seconds": round(time.time() - start, 1),
             "max_gpu_gb": round(torch.cuda.max_memory_allocated() / 1024**3, 1)
@@ -138,35 +200,52 @@ class GRPOTrainer:
         return metrics
 
     def _update(self, samples: list[Sample]) -> dict:
+        """`num_iterations` optimizer steps over the whole batch (one full-batch step each)."""
         model, beta = self.policy.model, self.cfg.train.get("beta", 0.0)
+        eps = self.cfg.train.get("epsilon", 0.2)
         temperature = self.policy.cfg.get("temperature", 1.0)
         total_tokens = sum(len(s.completion_ids) for s in samples)
         model.train()
-        pg_sum = kl_sum = 0.0
-        for s in samples:
-            if beta > 0:
-                with torch.no_grad(), model.disable_adapter():
-                    ref = completion_logprobs(model, s, temperature)
-            logp = completion_logprobs(model, s, temperature)
-            ratio = torch.exp(logp - logp.detach())  # = 1, carries the policy gradient
-            pg = -(ratio * s.advantage).sum()
-            loss = pg
-            if beta > 0:
-                diff = ref - logp
-                kl = (torch.exp(diff) - diff - 1).sum()
-                loss = loss + beta * kl
-                kl_sum += kl.item()
-            (loss / total_tokens).backward()
-            pg_sum += pg.item()
-        grad_norm = torch.nn.utils.clip_grad_norm_(self.params, self.cfg.train["max_grad_norm"])
-        self.optimizer.step()
-        self.scheduler.step()
-        self.optimizer.zero_grad(set_to_none=True)
-        return {
-            "pg_loss": pg_sum / total_tokens,
-            "kl": kl_sum / total_tokens,
-            "grad_norm": float(grad_norm),
-        }
+        out: dict = {}
+        for it in range(self.iterations):
+            pg_sum = kl_sum = clipped = 0.0
+            for s in samples:
+                if beta > 0 and s.ref_logp is None:
+                    with torch.no_grad(), model.disable_adapter():
+                        s.ref_logp = completion_logprobs(model, s, temperature)
+                logp = completion_logprobs(model, s, temperature)
+                if s.old_logp is None:  # first pass: the policy that sampled the batch
+                    s.old_logp = logp.detach()
+                ratio = torch.exp(logp - s.old_logp)
+                unclipped = ratio * s.advantage
+                clipped_obj = torch.clamp(ratio, 1 - eps, 1 + eps) * s.advantage
+                pg = -torch.min(unclipped, clipped_obj).sum()
+                clipped += (clipped_obj < unclipped).sum().item()
+                loss = pg
+                if beta > 0:
+                    diff = s.ref_logp - logp
+                    kl = (torch.exp(diff) - diff - 1).sum()
+                    loss = loss + beta * kl
+                    kl_sum += kl.item()
+                (loss / total_tokens).backward()
+                pg_sum += pg.item()
+            grad_norm = torch.nn.utils.clip_grad_norm_(self.params, self.cfg.train["max_grad_norm"])
+            self.optimizer.step()
+            self.scheduler.step()
+            self.optimizer.zero_grad(set_to_none=True)
+            if it == 0:
+                out.update(
+                    pg_loss=pg_sum / total_tokens,
+                    kl=kl_sum / total_tokens,
+                    grad_norm=float(grad_norm),
+                )
+            else:
+                out[f"clip_frac_iter{it + 1}"] = clipped / total_tokens
+                out[f"grad_norm_iter{it + 1}"] = float(grad_norm)
+        for s in samples:  # free GPU memory before the next rollout
+            s.old_logp = s.ref_logp = None
+        out["policy_updates"] = self.scheduler.last_epoch
+        return out
 
     def _log(self, metrics, episodes, scores, advantages) -> None:
         with open(self.run_dir / "metrics.jsonl", "a", encoding="utf-8") as f:
@@ -174,8 +253,21 @@ class GRPOTrainer:
         path = self.run_dir / "rollouts" / f"step-{self.step_count:05d}.jsonl"
         with open(path, "w", encoding="utf-8") as f:
             for ep, sc, adv in zip(episodes, scores, advantages, strict=True):
-                row = {**ep.to_dict(), **vars(sc), "advantage": adv, "step": self.step_count}
+                row = {**ep.to_dict(), **score_dict(sc), "advantage": adv, "step": self.step_count}
                 f.write(json.dumps(row, ensure_ascii=False) + "\n")
+        m = metrics
+        self.log.info(
+            "step %d/%d reward %.3f solve %.3f accept %.3f leak %.3f helpful-reject %.3f "
+            "turns %.1f ended %.2f trunc %.2f kl %.5f grad %.3f samples %d tokens %d "
+            "dialog %.0fs judge %.0fs step %.0fs gpu %.1fGB",
+            m["step"], self.cfg.train["max_steps"], m["reward"], m["solve_rate"],
+            m["accept_rate"], m["leak_rate"], m.get("helpfulness_reject_rate", 0.0),
+            m["mean_turns"], m["ended_by_tutor_rate"], m["truncated_rate"], m.get("kl", 0.0),
+            m.get("grad_norm", 0.0), m["samples"], m["tutor_tokens"], m["dialog_seconds"],
+            m["judge_seconds"], m["step_seconds"], m["max_gpu_gb"],
+        )  # fmt: skip
+        if m.get("skipped_update"):
+            self.log.warning("step %d: every group scored the same, no update", m["step"])
 
     # ----- loop and checkpoints ----------------------------------------------------------
     def train(
@@ -186,17 +278,26 @@ class GRPOTrainer:
     ) -> Path:
         """Run to max_steps. `on_save(path)` runs after each checkpoint (e.g. a Hub upload)."""
         max_steps, every = self.cfg.train["max_steps"], self.cfg.train["save_steps"]
+        self.log.info(
+            "training %s from step %d to %d", self.cfg.run_name, self.step_count, max_steps
+        )
         while self.step_count < max_steps:
-            metrics = self.step()
+            try:
+                metrics = self.step()
+            except Exception:
+                self.log.exception("step %d failed", self.step_count + 1)
+                raise
             if on_step:
                 on_step(metrics)
             if self.step_count % every == 0 or self.step_count == max_steps:
                 path = self.save(self.checkpoint_path())
+                self.log.info("saved %s", path.relative_to(self.run_dir))
                 if on_save:
                     on_save(path)
             if should_stop and should_stop():
                 break
         final = self.save(self.run_dir / "final", with_optimizer=False)
+        self.log.info("saved final adapter")
         if on_save:
             on_save(final)
         return final
@@ -242,6 +343,7 @@ class GRPOTrainer:
             rows = metrics.read_text(encoding="utf-8").splitlines()
             keep = [r for r in rows if r.strip() and json.loads(r)["step"] <= self.step_count]
             metrics.write_text("".join(r + "\n" for r in keep), encoding="utf-8")
+        self.log.info("resumed from %s at step %d", checkpoint, self.step_count)
         return self.step_count
 
 

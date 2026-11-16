@@ -70,14 +70,33 @@ class HFTutorPolicy:
 
     # ----- prompts -----------------------------------------------------------------------
     def prompt_ids(self, messages: Sequence[Message]) -> list[int]:
-        """Exactly the chat template the app's vLLM server applies (thinking disabled)."""
+        """Exactly the chat template the app's vLLM server applies (thinking disabled).
+
+        Qwen3.5's template refuses a prompt with no user message ("No user query found"), which
+        is the tutor's first turn when it opens the dialogue. Then a placeholder user message is
+        rendered and its block cut out, leaving system + generation prompt.
+        """
+        chat = [{"role": m.role, "content": m.content} for m in messages]
+        placeholder = "\x00tutor-opens\x00"
+        no_user = not any(m["role"] == "user" for m in chat)
+        if no_user:
+            chat.append({"role": "user", "content": placeholder})
         text = self.tokenizer.apply_chat_template(
-            [{"role": m.role, "content": m.content} for m in messages],
+            chat,
             tokenize=False,
             add_generation_prompt=True,
             enable_thinking=self.cfg.get("enable_thinking", False),
         )
+        if no_user:
+            block = f"<|im_start|>user\n{placeholder}<|im_end|>\n"
+            assert block in text, "unexpected chat template layout"
+            text = text.replace(block, "")
         return self.tokenizer(text, add_special_tokens=False)["input_ids"]
+
+    def was_truncated(self, messages: Sequence[Message], text: str) -> bool:
+        """True if this generation hit max_tokens_per_turn without a stop token."""
+        ids = self.records.get((tuple(self.prompt_ids(messages)), text))
+        return ids is not None and (not ids or ids[-1] not in self.stop_ids)
 
     def completion_ids(self, prompt_ids: Sequence[int], text: str) -> list[int]:
         """The sampled tokens for `text`; re-tokenized (+ stop token) if it was not recorded."""

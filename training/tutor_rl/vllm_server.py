@@ -92,6 +92,7 @@ def start_server(
         "--max-model-len", str(section.get("max_model_len", 8192)),
         "--max-num-seqs", str(section.get("max_num_seqs", 64)),
         "--generation-config", "vllm",  # use our sampling params, not the repo's defaults
+        *section.get("vllm_args", []),  # e.g. ["--quantization", "fp8"] for the student
         *(extra_args or []),
     ]  # fmt: skip
     env = dict(os.environ)
@@ -150,3 +151,10 @@ def start_student_and_judge(cfg, vllm_bin: Path, log_dir: Path) -> list[VLLMServ
             s.stop()
         raise
     return servers
+
+
+def start_eval_judge(cfg, vllm_bin: Path, log_dir: Path) -> VLLMServer:
+    """Serve [eval_judge] (the paper's held-out leak judge, Gemma3-27B) and export its env."""
+    server = start_server(vllm_bin, "eval_judge", cfg.eval_judge, log_dir)
+    export_env(server, cfg.eval_judge["env_prefix"])
+    return server

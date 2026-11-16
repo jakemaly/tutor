@@ -7,16 +7,28 @@ are confirmed, keeping `run_episodes` and `rewards.score_episodes` as the Pedago
 `run_episodes` advances many dialogues in lockstep so each model call is batched: the tutor
 policy generates one turn for every open dialogue at once, and the student endpoint receives
 its requests concurrently. `run_episode` is the single-dialogue special case.
+
+Paper setup (section 5.1, appendix A.2): each dialogue starts from an empty history and only the
+problem. Either the student opens with an attempt, or the tutor opens and elicits one; the
+choice is random per problem and shared by every rollout of that problem. At most 16 messages.
 """
 
+import random
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Literal, Protocol
 
 from tutor_rl.config import EpisodeConfig
-from tutor_rl.prompts import END_TOKEN, STUDENT_FINAL, STUDENT_SYSTEM, TUTOR_SYSTEM
+from tutor_rl.prompts import (
+    END_TOKEN,
+    STUDENT_FINAL,
+    STUDENT_PRE_DIALOG,
+    STUDENT_SYSTEM,
+    TUTOR_SYSTEM,
+)
 
 Role = Literal["system", "user", "assistant"]
+Speaker = Literal["tutor", "student"]
 
 
 @dataclass(frozen=True)
@@ -30,6 +42,7 @@ class ChatModel(Protocol):
 
     Models may also define `generate_batch(conversations, *, n=1) -> list[list[str]]` to answer
     several conversations in one call; `generate_many` falls back to looping `generate`.
+    A tutor may define `was_truncated(messages, text) -> bool` (hit the token limit).
     """
 
     def generate(self, messages: Sequence[Message], *, n: int = 1) -> list[str]: ...
@@ -50,12 +63,14 @@ def generate_many(
 class Problem:
     id: str
     question: str
-    answer: str  # normalized final answer, e.g. "72"
+    answer: str  # ground-truth final answer as written in the dataset (LaTeX allowed)
+    source: str = ""  # Big-Math sub-source, e.g. "cn_k12"
+    solve_rate: float | None = None  # dataset's Llama-3.1-8B solve rate (64 samples)
 
 
 @dataclass
 class Turn:
-    speaker: Literal["tutor", "student"]
+    speaker: Speaker
     content: str
 
 
@@ -65,16 +80,19 @@ class TutorStep:
 
     `context_turns` is how many of `Episode.turns` preceded the generation, so the trainer can
     rebuild the prompt with `Episode.tutor_view(context_turns)`. `output` is the raw text,
-    including the end token, which is what the policy is optimized on.
+    including the end token, which is what the policy is optimized on. `truncated` means the
+    turn hit the token limit without a stop token (appendix B's length penalty).
     """
 
     context_turns: int
     output: str
+    truncated: bool = False
 
 
 @dataclass
 class Episode:
     problem: Problem
+    initiator: Speaker = "student"
     turns: list[Turn] = field(default_factory=list)
     ended_by_tutor: bool = False
     final_attempts: list[str] = field(default_factory=list)
@@ -96,16 +114,17 @@ class Episode:
         return msgs
 
     def final_prompt(self) -> list[Message]:
-        return self.student_view() + [
-            Message("user", STUDENT_FINAL.format(problem=self.problem.question))
-        ]
+        return self.student_view() + [Message("user", STUDENT_FINAL)]
 
     def transcript(self) -> str:
-        return "\n".join(f"- {t.speaker.capitalize()}: {t.content}" for t in self.turns)
+        """The judges' format, as in the paper's judge examples ("- Student: ...")."""
+        names = {"tutor": "Teacher", "student": "Student"}
+        return "\n".join(f"- {names[t.speaker]}: {t.content}" for t in self.turns)
 
     def to_dict(self) -> dict:
         return {
             "problem": vars(self.problem),
+            "initiator": self.initiator,
             "turns": [vars(t) for t in self.turns],
             "ended_by_tutor": self.ended_by_tutor,
             "final_attempts": self.final_attempts,
@@ -113,26 +132,59 @@ class Episode:
         }
 
 
+def pre_dialog_prompt(problem: Problem) -> list[Message]:
+    """The student's chain-of-thought attempt before any dialogue (paper Figure 9)."""
+    return [Message("user", STUDENT_PRE_DIALOG.format(problem=problem.question))]
+
+
+def pick_initiators(n_problems: int, cfg: EpisodeConfig, rng: random.Random) -> list[Speaker]:
+    """One opener per problem: fixed by the config, or a fair coin flip for "random"."""
+    if cfg.initiator in ("student", "tutor"):
+        return [cfg.initiator] * n_problems
+    if cfg.initiator != "random":
+        raise ValueError(f"episode.initiator must be random, student or tutor: {cfg.initiator}")
+    return [rng.choice(("student", "tutor")) for _ in range(n_problems)]
+
+
 def run_episodes(
-    problems: Sequence[Problem], tutor: ChatModel, student: ChatModel, cfg: EpisodeConfig
+    problems: Sequence[Problem],
+    tutor: ChatModel,
+    student: ChatModel,
+    cfg: EpisodeConfig,
+    *,
+    initiators: Sequence[Speaker] | None = None,
+    final_student: ChatModel | None = None,
 ) -> list[Episode]:
-    """Roll out one dialogue per problem, in lockstep. The student opens, as in PedagogicalRL."""
-    episodes = [Episode(p) for p in problems]
+    """Roll out one dialogue per problem, in lockstep.
+
+    `initiators` gives who opens each dialogue (default: the student, unless the config fixes
+    it). `final_student` answers the post-dialog test (default: `student`); it exists so the
+    final solutions can have a larger token budget than the chat turns.
+    """
+    if initiators is None:
+        initiators = [cfg.initiator if cfg.initiator == "tutor" else "student"] * len(problems)
+    episodes = [Episode(p, initiator=who) for p, who in zip(problems, initiators, strict=True)]
     open_eps = list(episodes)
-    speaker: Literal["tutor", "student"] = "student"
-    for _ in range(cfg.max_turns):
+    truncated = getattr(tutor, "was_truncated", None)
+    for turn_index in range(cfg.max_turns):
         if not open_eps:
             break
-        if speaker == "student":
-            replies = generate_many(student, [ep.student_view() for ep in open_eps])
-            for ep, reply in zip(open_eps, replies, strict=True):
-                ep.turns.append(Turn("student", reply[0]))
-        else:
-            replies = generate_many(tutor, [ep.tutor_view() for ep in open_eps])
-            still_open = []
-            for ep, reply in zip(open_eps, replies, strict=True):
+        # Each dialogue alternates from its own opener; group this turn's speakers.
+        for speaker in ("student", "tutor"):
+            due = [ep for ep in open_eps if _speaker_at(ep, turn_index) == speaker]
+            if not due:
+                continue
+            if speaker == "student":
+                replies = generate_many(student, [ep.student_view() for ep in due])
+                for ep, reply in zip(due, replies, strict=True):
+                    ep.turns.append(Turn("student", reply[0]))
+                continue
+            views = [ep.tutor_view() for ep in due]
+            replies = generate_many(tutor, views)
+            for ep, view, reply in zip(due, views, replies, strict=True):
                 raw = reply[0]
-                ep.tutor_steps.append(TutorStep(len(ep.turns), raw))
+                cut = bool(truncated(view, raw)) if truncated else False
+                ep.tutor_steps.append(TutorStep(len(ep.turns), raw, cut))
                 if END_TOKEN in raw:
                     content = raw.replace(END_TOKEN, "").strip()
                     if content:
@@ -140,17 +192,22 @@ def run_episodes(
                     ep.ended_by_tutor = True
                 else:
                     ep.turns.append(Turn("tutor", raw))
-                    still_open.append(ep)
-            open_eps = still_open
-        speaker = "tutor" if speaker == "student" else "student"
+        open_eps = [ep for ep in open_eps if not ep.ended_by_tutor]
 
-    # Post-dialogue test: the student solves alone, with the conversation in context.
+    # Post-dialog test: the student solves alone, with the conversation in context.
     finals = generate_many(
-        student, [ep.final_prompt() for ep in episodes], n=cfg.student_final_attempts
+        final_student or student,
+        [ep.final_prompt() for ep in episodes],
+        n=cfg.student_final_attempts,
     )
     for ep, attempts in zip(episodes, finals, strict=True):
         ep.final_attempts = list(attempts)
     return episodes
+
+
+def _speaker_at(episode: Episode, turn_index: int) -> Speaker:
+    other: Speaker = "tutor" if episode.initiator == "student" else "student"
+    return episode.initiator if turn_index % 2 == 0 else other
 
 
 def run_episode(

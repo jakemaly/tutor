@@ -6,7 +6,7 @@
 | --- | --- |
 | Notebooks and training `.py` code | Run outputs: metrics, rollouts, eval results |
 | Configs (`training/configs/*.toml`) | Checkpoints (LoRA adapters + optimizer state) |
-| Experiment instructions (this file, README) | Logs (vLLM server logs) |
+| Experiment instructions (this file, README) | Logs (`train.log`, vLLM server logs) |
 | Small manifests | Datasets (one folder per data version) |
 | | Models (final adapters, merged weights) |
 
@@ -53,9 +53,13 @@ Never commit weights, run outputs, or datasets. `training/outputs/` is in `.giti
 ## Running an experiment
 
 1. Change things through a config, not the code: copy `configs/molab.toml` to a new name, edit it, commit it, and push.
-2. In the notebook, pick the config and set *Hub run repo name* to a new name for each experiment, such as `tutor-rl-qwen35-9b-lr2e-5`. Reusing a name continues (or overwrites) that run.
-3. Run `smoke` first after any code change.
-4. After the run, put the Hub link and the eval table in the issue or PR, and commit any config or instruction changes to GitHub.
+2. In the notebook, pick the config and set *Hub run repo name* to a new name for each experiment. Reusing a name continues (or overwrites) that run. Name runs after what changed, for example:
+   - `pedagogicalrl-qwen35-9b-lam075` (the default)
+   - `pedagogicalrl-qwen35-9b-hard-lam1`, the paper's hard variant: `[reward] hard = true`, `lam = 1.0`
+   - `pedagogicalrl-qwen35-9b-lam0`, which gives away answers freely, as in the paper's λ = 0 row
+3. Run `smoke` first after any code change. Its *seconds per step* times the step ratio estimates the full run. The full run has 64× the dialogues per step and 4× the turns, so expect several 12-hour sessions.
+4. Watch section 5 (*Training graphs and logs*) during the run: reward and r_sol should rise, leakage rejects should fall, and KL should stay small.
+5. After the run, evaluate (section 6). Put the Hub link, the eval table, and the trade-off chart in the issue or PR, and commit any config or instruction changes to GitHub.
 
 ## Where a run's files end up
 
@@ -63,5 +67,5 @@ Never commit weights, run outputs, or datasets. `training/outputs/` is in `.giti
   - `checkpoints/step-NNNNN/` (adapter, optimizer state, config, data manifest)
   - `final/adapter`
   - `metrics.jsonl`, `rollouts/`, `logs/`, `eval/`, `provenance.json`
-- Dataset repo `socratictutor/tutor-rl-gsm8k`: `<data_version>/train.jsonl`, `eval.jsonl`, `manifest.json`
+- Dataset repo `socratictutor/pedagogicalrl-bigmath` (name set by `[data] hub_dataset`): `<data_version>/train.jsonl`, `eval.jsonl`, `manifest.json`
 - Merged model (optional): `socratictutor/<run name>-merged`

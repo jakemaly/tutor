@@ -1,0 +1,80 @@
+{
+  "appendix_files": [
+    "example_paper.tex"
+  ],
+  "bibliography_references": [
+    "example_paper"
+  ],
+  "data_references": [],
+  "entrypoint": "example_paper.tex",
+  "figure_assets": [
+    {
+      "asset_kind": "raster",
+      "exists": true,
+      "raw_reference": "images/github.png",
+      "referenced_from": "example_paper.tex",
+      "resolved_path": "images\\github.png",
+      "sha256": "2495121b685778bd251e2b9ceea4124cf98479ec86e7d159658e47fa790f2c0e",
+      "source_classification": "original_asset"
+    },
+    {
+      "asset_kind": "vector",
+      "exists": true,
+      "raw_reference": "images/pareto_frontier.pdf",
+      "referenced_from": "example_paper.tex",
+      "resolved_path": "images\\pareto_frontier.pdf",
+      "sha256": "7f1c95a8925865e95b4e210e150bc9b1cd4602725feb419516f545ec02765bb5",
+      "source_classification": "original_asset"
+    },
+    {
+      "asset_kind": "vector",
+      "exists": true,
+      "raw_reference": "images/diagram.pdf",
+      "referenced_from": "example_paper.tex",
+      "resolved_path": "images\\diagram.pdf",
+      "sha256": "9de9f62d869ae821fd0179ac843284a2848d3b9ff8285c373a2d35f5e77de6e8",
+      "source_classification": "original_asset"
+    },
+    {
+      "asset_kind": "vector",
+      "exists": true,
+      "raw_reference": "images/difficulty_distribution.pdf",
+      "referenced_from": "example_paper.tex",
+      "resolved_path": "images\\difficulty_distribution.pdf",
+      "sha256": "b8ca92c2789741e0d89bbf6e53cec9f5d54d7f89c923d054ec6a12f89acee38d",
+      "source_classification": "original_asset"
+    },
+    {
+      "asset_kind": "missing",
+      "exists": false,
+      "raw_reference": "\\detokenize{images/_Success_vs_.pdf",
+      "referenced_from": "example_paper.tex",
+      "resolved_path": "",
+      "sha256": "",
+      "source_classification": "original_asset"
+    },
+    {
+      "asset_kind": "missing",
+      "exists": false,
+      "raw_reference": "\\detokenize{images/Leak_Solution_Rate_vs.pdf",
+      "referenced_from": "example_paper.tex",
+      "resolved_path": "",
+      "sha256": "",
+      "source_classification": "original_asset"
+    },
+    {
+      "asset_kind": "missing",
+      "exists": false,
+      "raw_reference": "\\detokenize{images/Pedagogical_Reward_vs.pdf",
+      "referenced_from": "example_paper.tex",
+      "resolved_path": "",
+      "sha256": "",
+      "source_classification": "original_asset"
+    }
+  ],
+  "source_root": "paper/source_tree",
+  "tex_files": [
+    "defns.tex",
+    "example_paper.tex"
+  ]
+}

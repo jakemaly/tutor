@@ -1,0 +1,12 @@
+{
+  "acceptance_mode": "numeric-equivalence",
+  "created_at": "2026-11-16T19:53:57Z",
+  "generated_by": "paper_harness.record-comparison",
+  "kind": "table",
+  "metrics": {
+    "count_mismatches": "0",
+    "max_solve_rate_abs_error_pp": "0.005"
+  },
+  "schema_version": 1,
+  "target_id": "tab1_data_composition"
+}

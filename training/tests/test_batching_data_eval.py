@@ -6,8 +6,8 @@ from collections.abc import Sequence
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
-from tutor_rl.config import load_config
-from tutor_rl.data import gsm8k_problem, read_problems, write_problems
+from tutor_rl.config import EpisodeConfig, load_config
+from tutor_rl.data import bigmath_problem, gsm8k_problem, read_problems, write_problems
 from tutor_rl.episode import Message, Problem, run_episodes
 from tutor_rl.evaluation import evaluate
 from tutor_rl.openai_chat import OpenAIChatModel
@@ -44,8 +44,8 @@ def test_lockstep_rollout_batches_calls_and_records_tutor_steps() -> None:
         return "What do you get if you add them?"
 
     tutor = Echo(tutor_reply)
-    student = Echo(lambda conv: "\\boxed{0}" if "over" in conv[-1].content else "hmm")
-    cfg = load_config(CONFIGS / "molab.toml").episode
+    student = Echo(lambda conv: "\\boxed{0}" if "has ended" in conv[-1].content else "hmm")
+    cfg = EpisodeConfig(max_turns=8, student_final_attempts=2, initiator="student")
     episodes = run_episodes([_problem(0), _problem(1)], tutor, student, cfg)
 
     # Student, tutor, student, tutor(p0 ends), student(p1), ... then one final batch.
@@ -99,29 +99,59 @@ def test_openai_client_batches_with_seeds(monkeypatch) -> None:
         server.shutdown()
 
 
-def test_gsm8k_rows_and_problem_files(tmp_path) -> None:
+def test_dataset_rows_and_problem_files(tmp_path) -> None:
     row = {"question": " Tom has 3 boxes... ", "answer": "3*400=1200\n#### 1,200"}
     problem = gsm8k_problem(row, "train", 5)
-    assert problem == Problem("gsm8k-train-5", "Tom has 3 boxes...", "1200")
-    sha = write_problems(tmp_path / "train.jsonl", [problem])
-    assert len(sha) == 64 and read_problems(tmp_path / "train.jsonl") == [problem]
+    assert problem == Problem("gsm8k-train-5", "Tom has 3 boxes...", "1200", source="gsm8k")
+    big = {
+        "problem": " Find $d$. ",
+        "answer": r"\frac{1}{2}",
+        "source": "cn_k12",
+        "domain": ["Mathematics -> Algebra"],
+        "llama8b_solve_rate": 0.15625,
+    }
+    bm = bigmath_problem(big, "test", 3)
+    assert bm == Problem("bigmath-test-3", "Find $d$.", r"\frac{1}{2}", "cn_k12", 0.15625)
+    sha = write_problems(tmp_path / "train.jsonl", [problem, bm])
+    assert len(sha) == 64 and read_problems(tmp_path / "train.jsonl") == [problem, bm]
 
 
-def test_evaluate_compares_policies_on_same_scenarios(tmp_path) -> None:
+def test_evaluate_reports_delta_solve_rate_and_eval_judge_leaks(tmp_path) -> None:
     cfg = load_config(CONFIGS / "smoke.toml")
     leaky = Echo(lambda conv: f"The answer is \\boxed{{2}} {END_TOKEN}")
     socratic = Echo(lambda conv: f"What is 1 + 1? {END_TOKEN}")
-    student = Echo(lambda conv: "\\boxed{2}")
+
+    def student_reply(conv):
+        if "reason step by step" in conv[-1].content:  # pre-dialog attempt: wrong
+            return "\\boxed{3}"
+        return "\\boxed{2}" if "has ended" in conv[-1].content else "hmm"
+
+    student = Echo(student_reply)
     judge = Echo(
         lambda conv: (
             '{"decision": "REJECT"}' if "answer is" in conv[0].content else '{"decision": "OK"}'
         )
     )
+    eval_judge = Echo(lambda conv: '{"decision": "REJECT"}')  # rejects everything it sees
     report = evaluate(
-        cfg, {"base": leaky, "trained": socratic}, [_problem(1)] * 3, student, judge, tmp_path
+        cfg,
+        {"base": leaky, "trained": socratic},
+        [_problem(1)] * 5,
+        student,
+        judge,
+        tmp_path,
+        eval_judge=eval_judge,
     )
     assert report["scenarios"] == cfg.eval["problems"] * cfg.eval["episodes_per_problem"]
-    assert report["results"]["base"]["leak_rate"] == 1.0
-    assert report["results"]["trained"]["reward"] == 1.0
-    assert "| trained |" in (tmp_path / "results.md").read_text()
+    base, trained = report["results"]["base"], report["results"]["trained"]
+    # leak_rate comes from the eval judge; the training judge's view is kept alongside.
+    assert base["leak_rate"] == 100.0 and trained["leak_rate"] == 100.0
+    assert base["train_judge_leak_rate"] == 100.0 and trained["train_judge_leak_rate"] == 0.0
+    assert trained["pre_solve_rate"] == 0.0 and trained["post_solve_rate"] == 1.0
+    assert trained["delta_solve_rate"] == 100.0
+    assert trained["reward"] == 1.1  # solved, accepted, +0.1 for ending the dialogue
+    assert base["accept_rate"] == 0.0
+    md = (tmp_path / "results.md").read_text(encoding="utf-8")
+    assert "| trained |" in md and "Qwen2.5-7B-RL λ=0.75 | 25.3 | 10.6" in md
     assert (tmp_path / "episodes-base.jsonl").read_text().count("\n") == report["scenarios"]
+    assert (tmp_path / "pre_dialog.jsonl").exists()

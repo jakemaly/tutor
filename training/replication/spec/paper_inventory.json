@@ -1,0 +1,66 @@
+{
+  "all_tex_files": [
+    "defns.tex",
+    "example_paper.tex"
+  ],
+  "appendix_files": [
+    "example_paper.tex"
+  ],
+  "bibliography_references": [
+    "example_paper"
+  ],
+  "checksum": "d46148ae59712c64468485dcb84c2bd36c692b432c2bd402ce13e35803f5e6c1",
+  "data_references": [],
+  "entrypoint": "example_paper.tex",
+  "figure_references": [
+    {
+      "exists": true,
+      "raw_reference": "images/github.png",
+      "referenced_from": "example_paper.tex",
+      "resolved_path": "images\\github.png"
+    },
+    {
+      "exists": true,
+      "raw_reference": "images/pareto_frontier.pdf",
+      "referenced_from": "example_paper.tex",
+      "resolved_path": "images\\pareto_frontier.pdf"
+    },
+    {
+      "exists": true,
+      "raw_reference": "images/diagram.pdf",
+      "referenced_from": "example_paper.tex",
+      "resolved_path": "images\\diagram.pdf"
+    },
+    {
+      "exists": true,
+      "raw_reference": "images/difficulty_distribution.pdf",
+      "referenced_from": "example_paper.tex",
+      "resolved_path": "images\\difficulty_distribution.pdf"
+    },
+    {
+      "exists": false,
+      "raw_reference": "\\detokenize{images/_Success_vs_.pdf",
+      "referenced_from": "example_paper.tex",
+      "resolved_path": ""
+    },
+    {
+      "exists": false,
+      "raw_reference": "\\detokenize{images/Leak_Solution_Rate_vs.pdf",
+      "referenced_from": "example_paper.tex",
+      "resolved_path": ""
+    },
+    {
+      "exists": false,
+      "raw_reference": "\\detokenize{images/Pedagogical_Reward_vs.pdf",
+      "referenced_from": "example_paper.tex",
+      "resolved_path": ""
+    }
+  ],
+  "source_root": "paper/source_tree",
+  "suspect_unreferenced_tex_files": [],
+  "tex_files": [
+    "defns.tex",
+    "example_paper.tex"
+  ],
+  "unreferenced_tex_files": []
+}

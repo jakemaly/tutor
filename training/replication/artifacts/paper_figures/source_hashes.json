@@ -1,0 +1,75 @@
+{
+  "entries": [
+    {
+      "entry_kind": "tabular_reference",
+      "path": "00README.json",
+      "sha256": "f5a0350d177c7532584877848812729d68fd89b112e9a3862126bf89a57765e2"
+    },
+    {
+      "entry_kind": "other",
+      "path": "acl.sty",
+      "sha256": "57ec5021756530bd01dab30657a3ca88bd20b1fd5694122b7f0daa9cfaa3e3ac"
+    },
+    {
+      "entry_kind": "other",
+      "path": "acl_natbib.bst",
+      "sha256": "e332fd51dcea48e2a8a89754892c3cb99674a1cd70b527b661e9aaffc235e83c"
+    },
+    {
+      "entry_kind": "other",
+      "path": "defns.tex",
+      "sha256": "280fc44dc837c76f286df59ddea993189956f17755b4d6328817fb51571d79d8"
+    },
+    {
+      "entry_kind": "other",
+      "path": "example_paper.bbl",
+      "sha256": "3182df8245ff3aaa868eb61c0dc009487ce7556d57eca538d6a56dd174d5a4f0"
+    },
+    {
+      "entry_kind": "other",
+      "path": "example_paper.tex",
+      "sha256": "41c1da835aaf6a3e7b6bd1a7a8accea29709867f36433ed9d5ea28700c8ce88c"
+    },
+    {
+      "entry_kind": "other",
+      "path": "icml2024.bst",
+      "sha256": "3a69e73c9c8968bd555204d84e59616f3c4fd23c5fd6994502167860bd8a2849"
+    },
+    {
+      "entry_kind": "reference_asset",
+      "path": "images\\_Success_vs_.pdf",
+      "sha256": "745874c58d3713497420b849ead95d076fbc827849f871b79958315c48fa84fa"
+    },
+    {
+      "entry_kind": "reference_asset",
+      "path": "images\\diagram.pdf",
+      "sha256": "9de9f62d869ae821fd0179ac843284a2848d3b9ff8285c373a2d35f5e77de6e8"
+    },
+    {
+      "entry_kind": "reference_asset",
+      "path": "images\\difficulty_distribution.pdf",
+      "sha256": "b8ca92c2789741e0d89bbf6e53cec9f5d54d7f89c923d054ec6a12f89acee38d"
+    },
+    {
+      "entry_kind": "reference_asset",
+      "path": "images\\github.png",
+      "sha256": "2495121b685778bd251e2b9ceea4124cf98479ec86e7d159658e47fa790f2c0e"
+    },
+    {
+      "entry_kind": "reference_asset",
+      "path": "images\\Leak_Solution_Rate_vs.pdf",
+      "sha256": "ec920392ee8c5fe60d0d96fd4141b318088710372772216959b1746ef1b49be1"
+    },
+    {
+      "entry_kind": "reference_asset",
+      "path": "images\\pareto_frontier.pdf",
+      "sha256": "7f1c95a8925865e95b4e210e150bc9b1cd4602725feb419516f545ec02765bb5"
+    },
+    {
+      "entry_kind": "reference_asset",
+      "path": "images\\Pedagogical_Reward_vs.pdf",
+      "sha256": "f95a3a2a71878a3055d77cd26e43298ae2a5676abd16c27bddfab71048e0c5d5"
+    }
+  ],
+  "source_root": "paper/source_tree"
+}
