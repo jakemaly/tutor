@@ -120,6 +120,31 @@ def evaluate(
 
     models = (*policies.values(), student, judge, leak_judge, solver)
     saved_seeds = {id(m): getattr(m, "seed", None) for m in models}
+    # A smaller tutor batch while the eval judge also occupies the GPU (local HF policies only).
+    saved_batch = {}
+    if e.get("generation_batch_size"):
+        for p in policies.values():
+            if isinstance(getattr(p, "cfg", None), dict):
+                saved_batch.setdefault(id(p), (p, p.cfg.get("generation_batch_size")))
+                p.cfg = {**p.cfg, "generation_batch_size": e["generation_batch_size"]}
+    try:
+        return _evaluate(
+            cfg, policies, problems, scenarios, initiators, student, judge, leak_judge, solver,
+            out_dir, before_each, models, seed, eval_judge, say,
+        )  # fmt: skip
+    finally:
+        for model in models:  # back to unseeded sampling
+            if hasattr(model, "seed"):
+                model.seed = saved_seeds[id(model)]
+        for p, size in saved_batch.values():
+            p.cfg = {**p.cfg, "generation_batch_size": size}
+
+
+def _evaluate(
+    cfg, policies, problems, scenarios, initiators, student, judge, leak_judge, solver,
+    out_dir, before_each, models, seed, eval_judge, say,
+) -> dict:  # fmt: skip
+    e = cfg.eval
     for model in models:
         _set_seed(model, seed)
     say("Measuring the student's pre-dialog solve rate…")
@@ -156,9 +181,6 @@ def evaluate(
                 row = {**ep.to_dict(), **score_dict(sc), "eval_leaked": lk}
                 row["eval_judge_outputs"] = lo["leakage"]
                 f.write(json.dumps(row, ensure_ascii=False) + "\n")
-    for model in models:  # back to unseeded sampling
-        if hasattr(model, "seed"):
-            model.seed = saved_seeds[id(model)]
 
     report = {
         "run_name": cfg.run_name,

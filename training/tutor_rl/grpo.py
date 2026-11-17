@@ -244,6 +244,10 @@ class GRPOTrainer:
                 out[f"grad_norm_iter{it + 1}"] = float(grad_norm)
         for s in samples:  # free GPU memory before the next rollout
             s.old_logp = s.ref_logp = None
+        if torch.cuda.is_available():
+            # Return the update's activation blocks so the next rollout's batched generation
+            # (a different shape) does not fragment around them.
+            torch.cuda.empty_cache()
         out["policy_updates"] = self.scheduler.last_epoch
         return out
 

@@ -5,8 +5,9 @@
 # sessions and resumes from the Hub. Deviation: the tutor is Qwen3.5-9B with a LoRA adapter, not a
 # full fine-tune of Qwen2.5-7B-Instruct (a full fine-tune does not fit next to the student and judge).
 #
-# GPU layout: student vLLM (FP8) ~19 GB + judge vLLM (AWQ) ~17 GB + tutor bf16 LoRA ~55 GB.
-# Evaluation adds the Gemma3-27B leak judge (~25 GB); the notebook frees training memory first.
+# GPU layout (96 GB): student vLLM (FP8) 19 GB + judge vLLM (AWQ) 17 GB + tutor ~20 GB weights
+# + up to ~25 GB while generating 64 turns at once. Evaluation adds the Gemma3-27B leak judge (25 GB)
+# and generates 16 turns at a time instead ([eval] generation_batch_size).
 
 run_name = "pedagogicalrl-qwen35-9b-lam075"
 seed = 3407
@@ -42,7 +43,7 @@ max_tokens_final = 1024    # pre- and post-dialog step-by-step solutions
 port = 8101
 gpu_memory_utilization = 0.20
 max_model_len = 8192
-max_num_seqs = 256
+max_num_seqs = 128  # also bounds vLLM's CUDA-graph memory
 
 [judge]
 # Paper: Qwen2.5-14B-Instruct, 4-bit AWQ, two prompts (leakage, helpfulness) sampled twice each.
@@ -55,7 +56,7 @@ max_tokens = 512
 port = 8102
 gpu_memory_utilization = 0.18
 max_model_len = 8192
-max_num_seqs = 256
+max_num_seqs = 128  # also bounds vLLM's CUDA-graph memory
 share_student = false      # true: the student's server also judges (not the paper's setup)
 
 [eval_judge]
@@ -70,7 +71,7 @@ max_tokens = 512
 port = 8103
 gpu_memory_utilization = 0.26
 max_model_len = 8192
-max_num_seqs = 128
+max_num_seqs = 64
 
 [episode]
 max_turns = 16             # paper: total tutor + student messages
@@ -109,6 +110,7 @@ output_dir = "outputs/pedagogicalrl-qwen35-9b-lam075"  # outside git; see .gitig
 problems = 500             # paper: the 500 held-out Big-Math problems
 episodes_per_problem = 1
 leak_judge_samples = 1
+generation_batch_size = 16  # tutor batch during eval: Gemma takes ~25 GB more GPU
 seed = 1234
 
 [data]

@@ -155,3 +155,19 @@ def test_evaluate_reports_delta_solve_rate_and_eval_judge_leaks(tmp_path) -> Non
     assert "| trained |" in md and "Qwen2.5-7B-RL λ=0.75 | 25.3 | 10.6" in md
     assert (tmp_path / "episodes-base.jsonl").read_text().count("\n") == report["scenarios"]
     assert (tmp_path / "pre_dialog.jsonl").exists()
+
+
+def test_vllm_children_get_a_clean_environment(monkeypatch) -> None:
+    from tutor_rl.vllm_server import is_vllm_process, vllm_env
+
+    monkeypatch.setenv("PYTHONPATH", "/kernel/site-packages")
+    monkeypatch.setenv("VIRTUAL_ENV", "/kernel")
+    monkeypatch.setenv("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
+    env = vllm_env(Path("/work/vllm-env/bin/vllm"))
+    assert not {"PYTHONPATH", "VIRTUAL_ENV", "PYTORCH_CUDA_ALLOC_CONF"} & set(env)
+    assert env["VLLM_USE_FLASHINFER_SAMPLER"] == "0"
+    assert env["PATH"].startswith(str(Path("/work/vllm-env/bin")))
+    # Only vLLM processes are ever cleaned up.
+    assert is_vllm_process("/work/vllm-env/bin/python /work/vllm-env/bin/vllm serve x")
+    assert is_vllm_process("VLLM::EngineCore")
+    assert not is_vllm_process("python -m marimo edit tutor_rl_molab.py")

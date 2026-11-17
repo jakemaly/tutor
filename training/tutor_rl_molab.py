@@ -26,6 +26,11 @@ with app.setup:
     from dataclasses import replace
     from pathlib import Path
 
+    # Must be set before torch first touches CUDA (the dependency cell does), or it has no effect.
+    # It lets the tutor's batched generation and training reuse freed memory without fragmenting.
+    # The vLLM servers do not inherit it (tutor_rl.vllm_server.vllm_env drops it).
+    os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
+
     REPO = "jakemaly/tutor"
     DEFAULT_REF = "46-ml-2-1-implement-the-pedagogicalrl-inspired-trainer-and-serve-its-checkpoint"
 
@@ -307,6 +312,14 @@ def _(cfg, data_manifest, hub_org, hub_run_name, hub_sync, mo, run_dir):
     return hub, hub_repo_id
 
 
+@app.function
+def gpu_report_md():
+    """GPU memory in use, per process when nvidia-smi can tell (Markdown)."""
+    from tutor_rl.vllm_server import gpu_report
+
+    return gpu_report()
+
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -347,28 +360,38 @@ def _(cfg, mo, run_dir, start_servers, work_root):
                 f"paste a token above. ({type(_e).__name__})"
             ) from None
 
+    # vLLM processes get a clean environment (no kernel PYTHONPATH/VIRTUAL_ENV, FlashInfer sampler
+    # off, the venv first on PATH): see `vllm_env` in tutor_rl/vllm_server.py. A fresh start also
+    # kills vLLM processes left over from an earlier failed start, which otherwise keep ~20 GB each.
     with mo.status.spinner(title="Installing vLLM (first run only)…"):
         _vllm_bin = ensure_vllm_env(Path(work_root.value) / "vllm-env")
     with mo.status.spinner(title="Starting student and judge (downloads weights on first run)…"):
         servers = start_student_and_judge(cfg, _vllm_bin, run_dir / "logs")
-    mo.md("Running: " + ", ".join(f"`{_s.name}` at {_s.base_url}" for _s in servers))
-
+    mo.vstack([
+        mo.md("Running: " + ", ".join(f"`{_s.name}` at {_s.base_url}" for _s in servers)),
+        mo.md(gpu_report_md()),
+    ])
     return (servers,)
 
 
 @app.cell
 def _(mo):
     stop_servers = mo.ui.run_button(label="Stop servers (frees ~36 GB)")
-    stop_servers
-    return (stop_servers,)
+    show_gpu = mo.ui.run_button(label="Show GPU memory")
+    mo.hstack([stop_servers, show_gpu], justify="start")
+    return show_gpu, stop_servers
 
 
 @app.cell
-def _(mo, servers, stop_servers):
-    mo.stop(not stop_servers.value)
-    for _s in servers:
-        _s.stop()
-    mo.md("Servers stopped. Re-run the start cell to bring them back.")
+def _(mo, show_gpu, stop_servers):
+    mo.stop(not (stop_servers.value or show_gpu.value))
+    from tutor_rl.vllm_server import kill_stale_vllm
+
+    _msg = ""
+    if stop_servers.value:  # every vLLM process, including servers re-adopted from an earlier run
+        _killed = kill_stale_vllm()
+        _msg = f"Stopped {len(_killed)} vLLM process(es). Re-run the start cell to bring them back.\n\n"
+    mo.md(_msg + gpu_report_md())
     return
 
 
@@ -385,7 +408,6 @@ def _(mo):
 @app.cell
 def _(cfg, deps_ready, mo, servers):
     assert deps_ready and servers  # GPU memory for vLLM is reserved first
-    os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
     from tutor_rl.openai_chat import model_from_section
     from tutor_rl.policy import load_tutor
 
@@ -583,7 +605,15 @@ def _(
     mo.output.replace(mo.md(f"Starting at step {_start}…"))
     try:
         trained_adapter = trainer.train(on_step=_show, on_save=_upload) / "adapter"
-    except BaseException:
+    except BaseException as _err:
+        if "out of memory" in str(_err).lower():  # say where the memory went before re-raising
+            from torch.cuda import memory_summary as _memory_summary
+
+            mo.output.replace(mo.vstack([
+                mo.callout(mo.md(f"**GPU out of memory** at step {trainer.step_count + 1}."), kind="danger"),
+                mo.md(gpu_report_md()),
+                mo.md(f"```\n{_memory_summary(abbreviated=True)}\n```"),
+            ]))
         if trainer.step_count > _start:  # keep the progress made since the last checkpoint
             _upload(trainer.save(trainer.checkpoint_path()))
             if hub is not None:
@@ -643,6 +673,7 @@ def _(fetch_hub_logs, hub_repo_id, mo, refresh_graphs, run_dir, smooth_window):
     mo.vstack([
         mo.md(f"`{run_dir / 'metrics.jsonl'}`: {len(_rows)} steps logged."),
         _dashboard(_rows, window=smooth_window.value),
+        mo.accordion({"GPU memory now": mo.md(gpu_report_md())}),
         mo.md("**Logs** (last 200 lines each: the trainer's `train.log` and each vLLM server)"),
         mo.ui.tabs(_logs) if _logs else mo.md("_No logs yet._"),
     ])
