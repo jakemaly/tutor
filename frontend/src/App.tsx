@@ -5,6 +5,7 @@ import {
   useRemoteThreadListRuntime,
 } from "@assistant-ui/react";
 import { useDataStreamRuntime } from "@assistant-ui/react-data-stream";
+import { attachmentAdapter } from "@/lib/attachments";
 import { Thread } from "@/components/assistant-ui/elements/thread.aui";
 import { ThreadListSidebar } from "@/components/threadlist-sidebar.aui";
 import {
@@ -33,6 +34,7 @@ export default function App() {
       return useDataStreamRuntime({
         api: "/api/chat",
         protocol: "data-stream",
+        adapters: { attachments: attachmentAdapter },
         onResponse: (response) => {
           if (response.ok) setError(null);
         },

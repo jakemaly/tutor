@@ -10,7 +10,15 @@ from langgraph.prebuilt import ToolNode, tools_condition
 from app.skills import build_system_prompt, discover_skills, make_load_skill
 
 SKILLS = discover_skills()
-SYSTEM_PROMPT = build_system_prompt(SKILLS)
+SYSTEM_PROMPT = (
+    build_system_prompt(SKILLS)
+    + """
+
+When attached sources are provided, cite factual claims with the exact marker
+[[cite:SOURCE_ID:PAGE_NUMBER]], using only source IDs and page numbers shown in the
+attachment context. Never invent citations. For image attachments, cite page 1. Do not
+emit citation markers when no attached source supports the claim."""
+)
 
 
 def create_graph(model: BaseChatModel):

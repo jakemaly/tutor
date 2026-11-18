@@ -11,11 +11,13 @@ import {
   ActionBarMorePrimitive,
   ActionBarPrimitive,
   AuiIf,
+  AttachmentPrimitive,
   type AssistantState,
   BranchPickerPrimitive,
   ComposerPrimitive,
   MessagePrimitive,
   ThreadPrimitive,
+  useAuiEvent,
   type ToolCallMessagePartProps,
   useAui,
   useAuiState,
@@ -30,10 +32,14 @@ import {
   DownloadIcon,
   MoreHorizontalIcon,
   PencilIcon,
+  PaperclipIcon,
+  FileTextIcon,
+  ImageIcon,
   RefreshCwIcon,
   SquareIcon,
+  XIcon,
 } from "lucide-react";
-import type { FC } from "react";
+import { useState, type FC } from "react";
 
 // Startup exposes a loading placeholder thread; treat it as a new chat so
 // the composer mounts centered. Loads after startup keep the docked layout.
@@ -168,6 +174,27 @@ const Composer: FC = () => {
         data-slot="aui_composer-shell"
         className="border-foreground/10 focus-within:border-foreground/25 flex w-full cursor-text flex-col gap-2 rounded-(--composer-radius) border bg-(--composer-bg) p-(--composer-padding) transition-[border-color]"
       >
+        <ComposerPrimitive.Attachments>
+          {({ attachment }) => (
+            <AttachmentPrimitive.Root
+              className="flex min-w-0 items-center gap-2 rounded-lg border bg-background px-2.5 py-2"
+              key={attachment.id}
+            >
+              {attachment.type === "image" ? (
+                <ImageIcon className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+              ) : (
+                <FileTextIcon className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+              )}
+              <span className="min-w-0 flex-1 truncate text-xs font-medium">
+                <AttachmentPrimitive.Name />
+              </span>
+              <AttachmentPrimitive.Remove aria-label={`Remove ${attachment.name}`}>
+                <XIcon className="size-4" />
+              </AttachmentPrimitive.Remove>
+            </AttachmentPrimitive.Root>
+          )}
+        </ComposerPrimitive.Attachments>
+        <AttachmentAddError />
         <ComposerPrimitive.Input
           placeholder="Message Tutor"
           className="aui-composer-input placeholder:text-muted-foreground/60 max-h-48 min-h-10 w-full resize-none bg-transparent px-2.5 py-1 text-base leading-6 outline-none"
@@ -181,6 +208,13 @@ const Composer: FC = () => {
   );
 };
 
+const AttachmentAddError: FC = () => {
+  const [error, setError] = useState<string | null>(null);
+  useAuiEvent("composer.attachmentAddError", ({ message }) => setError(message));
+  useAuiEvent("composer.attachmentAdd", () => setError(null));
+  return error ? <p className="px-2 text-xs text-destructive" role="alert">{error}</p> : null;
+};
+
 const ComposerAction: FC = () => {
   // Submission may be pending before the model run starts.
   const isSending = useAuiState(
@@ -191,7 +225,13 @@ const ComposerAction: FC = () => {
 
   return (
     <div className="aui-composer-action-wrapper relative flex items-center justify-end">
-      <div className="flex items-center gap-1.5">
+      <div className="flex w-full items-center justify-between gap-1.5 px-1">
+        <ComposerPrimitive.AddAttachment asChild>
+          <TooltipIconButton tooltip="Attach a PDF or image" aria-label="Attach a PDF or image">
+            <PaperclipIcon />
+          </TooltipIconButton>
+        </ComposerPrimitive.AddAttachment>
+        <div className="flex items-center gap-1.5">
         <AuiIf
           condition={(s) =>
             !s.composer.canCancel ||
@@ -232,6 +272,7 @@ const ComposerAction: FC = () => {
             </Button>
           </ComposerPrimitive.Cancel>
         </AuiIf>
+        </div>
       </div>
     </div>
   );
@@ -391,6 +432,19 @@ const UserMessage: FC = () => {
           <MessagePrimitive.Parts />
         </div>
         <MessageTimestamp align="end" />
+        <MessagePrimitive.Attachments>
+          {({ attachment }) => (
+            <a
+              href={`/api/attachments/${encodeURIComponent(attachment.id)}`}
+              target="_blank"
+              rel="noreferrer"
+              className="mt-2 flex max-w-64 items-center gap-2 rounded-lg border bg-background p-2 text-xs hover:bg-muted"
+            >
+              {attachment.type === "image" ? <ImageIcon className="size-4" /> : <FileTextIcon className="size-4" />}
+              <span className="min-w-0 truncate">{attachment.name}</span>
+            </a>
+          )}
+        </MessagePrimitive.Attachments>
         <div className="aui-user-action-bar-wrapper pointer-events-none absolute start-0 top-1/2 -translate-x-full -translate-y-1/2 pe-2 opacity-0 transition-opacity group-focus-within/message-root:pointer-events-auto group-focus-within/message-root:opacity-100 group-hover/message-root:pointer-events-auto group-hover/message-root:opacity-100 peer-empty:hidden rtl:translate-x-full">
           <UserActionBar />
         </div>
