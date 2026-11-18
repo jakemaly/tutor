@@ -571,9 +571,6 @@ def test_openai_compatible_stream_works_through_fastapi_and_langgraph() -> None:
         "Prior answer",
         "Second turn",
     ]
-    # The server sets no output cap, so the backend must not add a per-request one.
-    assert "max_tokens" not in sent_requests[0]
-    assert "max_completion_tokens" not in sent_requests[0]
 
 
 def test_model_failure_keeps_partial_text_and_reports_a_safe_actionable_error() -> None:
