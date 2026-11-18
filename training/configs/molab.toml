@@ -28,6 +28,7 @@ temperature = 1.0          # paper
 top_p = 1.0
 max_tokens_per_turn = 256  # not stated in the paper; longer turns get the 0.5 truncation penalty
 generation_batch_size = 48 # tutor turns generated together; fits the 50% tutor cap
+max_prefill_tokens = 24576  # cap on batch size x longest prompt, so long dialogues use smaller batches
 
 [student]
 # Paper: Llama-3.1-8B-Instruct, served with vLLM and FP8 quantization. Gated: accept the licence.

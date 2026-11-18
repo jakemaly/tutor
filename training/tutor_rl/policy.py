@@ -28,8 +28,14 @@ def load_tutor(
     name, revision = tutor_cfg["model"], tutor_cfg["revision"]
     tokenizer = AutoTokenizer.from_pretrained(name, revision=revision)
     # Qwen3.5 checkpoints are vision-language; AutoModelForCausalLM loads the text model only.
+    # SDPA attention: with padded batches PyTorch picks a fused kernel instead of materializing
+    # the (batch x heads x length x length) score matrix, which is what ran out of memory.
     model = AutoModelForCausalLM.from_pretrained(
-        name, revision=revision, dtype=torch.bfloat16, device_map={"": device}
+        name,
+        revision=revision,
+        dtype=torch.bfloat16,
+        device_map={"": device},
+        attn_implementation=tutor_cfg.get("attn_implementation", "sdpa"),
     )
     model.config.use_cache = True
     if trainable:
@@ -46,6 +52,30 @@ def load_tutor(
         )
         model = get_peft_model(model, lora)
     return HFTutorPolicy(model, tokenizer, tutor_cfg)
+
+
+def token_budget_chunks(lengths: Sequence[int], max_batch: int, max_tokens: int) -> list[list[int]]:
+    """Group prompt indices into generation batches by padded size, longest prompts first.
+
+    A batch is left-padded to its longest prompt, so its first forward pass costs about
+    `len(batch) * longest` tokens of activations. Keeping that under `max_tokens` bounds peak
+    memory however long the dialogues get: short prompts go `max_batch` at a time, long ones
+    in smaller groups. Sorting by length also keeps padding small.
+    """
+    order = sorted(range(len(lengths)), key=lambda i: -lengths[i])
+    chunks: list[list[int]] = []
+    for i in order:
+        current = chunks[-1] if chunks else None
+        # Sorted longest first, so the batch's padded width is its first prompt's length.
+        if (
+            current
+            and len(current) < max_batch
+            and (len(current) + 1) * lengths[current[0]] <= max_tokens
+        ):
+            current.append(i)
+        else:
+            chunks.append([i])
+    return chunks
 
 
 @dataclass
@@ -129,13 +159,19 @@ class HFTutorPolicy:
             eos_token_id=self.stop_ids,
             pad_token_id=self.tokenizer.pad_token_id,
         )
-        texts: list[str] = []
-        batch_size = self.cfg.get("generation_batch_size", 16)
+        texts: list[str] = [""] * len(prompts)
+        chunks = token_budget_chunks(
+            [len(p) for p in prompts],
+            max_batch=self.cfg.get("generation_batch_size", 16),
+            max_tokens=self.cfg.get("max_prefill_tokens", 24576),
+        )
         was_training = self.model.training
         self.model.eval()
         try:
-            for start in range(0, len(prompts), batch_size):
-                texts += self._generate_chunk(prompts[start : start + batch_size], gen_cfg)
+            for chunk in chunks:
+                outs = self._generate_chunk([prompts[i] for i in chunk], gen_cfg)
+                for i, text in zip(chunk, outs, strict=True):
+                    texts[i] = text
         finally:
             if was_training:
                 self.model.train()

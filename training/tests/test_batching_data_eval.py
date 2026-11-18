@@ -171,3 +171,20 @@ def test_vllm_children_get_a_clean_environment(monkeypatch) -> None:
     assert is_vllm_process("/work/vllm-env/bin/python /work/vllm-env/bin/vllm serve x")
     assert is_vllm_process("VLLM::EngineCore")
     assert not is_vllm_process("python -m marimo edit tutor_rl_molab.py")
+
+
+def test_generation_batches_are_bounded_by_padded_tokens() -> None:
+    from tutor_rl.policy import token_budget_chunks
+
+    lengths = [100, 2000, 150, 1900, 120, 4000]
+    chunks = token_budget_chunks(lengths, max_batch=48, max_tokens=4100)
+    assert sorted(i for c in chunks for i in c) == list(range(len(lengths)))
+    for c in chunks:  # padded size of every batch fits, except a single over-long prompt
+        assert len(c) == 1 or len(c) * max(lengths[i] for i in c) <= 4100
+    assert chunks[0] == [5] and chunks[1] == [1, 3]  # longest first; similar lengths together
+    # Short prompts still go max_batch at a time.
+    assert [len(c) for c in token_budget_chunks([50] * 100, max_batch=48, max_tokens=24576)] == [
+        48,
+        48,
+        4,
+    ]
