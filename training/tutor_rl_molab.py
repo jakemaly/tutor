@@ -657,12 +657,20 @@ def _(
     if not _adapter.exists() and hub is not None:  # trained in an earlier session
         from huggingface_hub import snapshot_download
 
-        snapshot_download(
-            hub_repo_id, local_dir=str(run_dir), allow_patterns=["final/**"],
-            token=os.environ.get("HF_TOKEN"),
-        )
-    assert _adapter.exists(), f"No trained adapter at {_adapter}; train first."
+        from tutor_rl.hub import latest_hub_checkpoint
+
+        _token = os.environ.get("HF_TOKEN")
+        snapshot_download(hub_repo_id, local_dir=str(run_dir), allow_patterns=["final/**"], token=_token)
+        if not _adapter.exists():  # the session ended before the final upload: newest checkpoint
+            _ckpt = latest_hub_checkpoint(hub_repo_id, _token)
+            if _ckpt is not None:
+                snapshot_download(
+                    hub_repo_id, local_dir=str(run_dir), allow_patterns=[f"{_ckpt[0]}/adapter/**"], token=_token
+                )
+                _adapter = run_dir / _ckpt[0] / "adapter"
+    assert _adapter.exists(), f"No trained adapter in {run_dir} or on the Hub ({hub_repo_id}); train first."
     load_adapter_weights(tutor, _adapter)
+    mo.output.append(mo.md(f"Trained tutor: `{_adapter.relative_to(run_dir)}`"))
 
     def _switch(name, policy):
         policy.use_adapter = name == "trained"
