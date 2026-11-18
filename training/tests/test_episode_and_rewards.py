@@ -190,18 +190,16 @@ def test_group_advantages_are_centered() -> None:
     assert group_advantages([0.5, 0.5]) == [0.0, 0.0]
 
 
-def test_molab_config_has_the_papers_values() -> None:
+def test_configs_load_with_24_dialogues_per_step() -> None:
     cfg = load_config(CONFIGS / "molab.toml")
     t = cfg.train
-    assert (t["problems_per_step"], t["episodes_per_problem"], t["num_iterations"]) == (16, 8, 2)
-    assert t["max_steps"] * t["num_iterations"] == 300 and t["beta"] == 0.001
-    assert cfg.episode == EpisodeConfig(max_turns=16, student_final_attempts=8, initiator="random")
-    assert cfg.reward.judges == ("leakage", "helpfulness") and cfg.reward.samples_per_judge == 2
-    assert cfg.tutor["temperature"] == 1.0 and cfg.eval["problems"] == 500
+    assert t["problems_per_step"] * t["episodes_per_problem"] == 24 and t["max_steps"] == 60
+    assert cfg.episode == EpisodeConfig(max_turns=8, student_final_attempts=4, initiator="random")
+    assert cfg.reward.hard and cfg.reward.lam == 1.0
+    assert cfg.reward.judges == ("leakage", "helpfulness")
     assert cfg.data["dataset"] == "rd211/Big-Math-RL-Verified-Filtered"
-    assert (cfg.data["train_limit"], cfg.data["eval_limit"]) == (10000, 500)
     smoke = load_config(CONFIGS / "smoke.toml")
-    assert smoke.tutor == {**cfg.tutor, "max_tokens_per_turn": 128, "generation_batch_size": 16}
+    assert smoke.tutor == {**cfg.tutor, "max_tokens_per_turn": 128}
     assert (smoke.student, smoke.judge, smoke.reward) == (cfg.student, cfg.judge, cfg.reward)
 
 
@@ -212,17 +210,15 @@ def test_gpu_budget_keeps_everything_under_80_percent() -> None:
 
     for name in ("molab", "smoke"):
         cfg = load_config(CONFIGS / f"{name}.toml")
-        train, evaluating = plan(cfg), plan(cfg, evaluating=True)
+        budget = plan(cfg)
         assert cfg.gpu["max_fraction"] == 0.80
-        for budget in (train, evaluating):
-            assert sum(budget.servers.values()) + budget.tutor == pytest.approx(0.80)
-        assert set(train.servers) == {"student", "judge"} and train.tutor == pytest.approx(0.50)
-        assert "eval_judge" in evaluating.servers and evaluating.tutor == pytest.approx(0.26)
-        assert "| **total** | **80%** |" in train.markdown()
+        assert sum(budget.servers.values()) + budget.tutor == pytest.approx(0.80)
+        assert set(budget.servers) == {"student", "judge"} and budget.tutor == pytest.approx(0.50)
+        assert budget.summary() == "student 15%, judge 15%, tutor 50% = 80%"
     # Sharing the student's server frees the judge's share for the tutor.
     shared = replace(cfg, judge={**cfg.judge, "share_student": True})
     assert plan(shared).tutor == pytest.approx(0.65)
     # A config that cannot fit fails up front, before any download.
     greedy = replace(cfg, student={**cfg.student, "gpu_memory_utilization": 0.5})
     with pytest.raises(ValueError, match="does not fit"):
-        plan(greedy, evaluating=True)
+        plan(greedy)

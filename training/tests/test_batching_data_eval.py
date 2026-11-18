@@ -116,7 +116,7 @@ def test_dataset_rows_and_problem_files(tmp_path) -> None:
     assert len(sha) == 64 and read_problems(tmp_path / "train.jsonl") == [problem, bm]
 
 
-def test_evaluate_reports_delta_solve_rate_and_eval_judge_leaks(tmp_path) -> None:
+def test_evaluate_reports_leaks_and_student_results(tmp_path) -> None:
     cfg = load_config(CONFIGS / "smoke.toml")
     leaky = Echo(lambda conv: f"The answer is \\boxed{{2}} {END_TOKEN}")
     socratic = Echo(lambda conv: f"What is 1 + 1? {END_TOKEN}")
@@ -132,28 +132,20 @@ def test_evaluate_reports_delta_solve_rate_and_eval_judge_leaks(tmp_path) -> Non
             '{"decision": "REJECT"}' if "answer is" in conv[0].content else '{"decision": "OK"}'
         )
     )
-    eval_judge = Echo(lambda conv: '{"decision": "REJECT"}')  # rejects everything it sees
     report = evaluate(
-        cfg,
-        {"base": leaky, "trained": socratic},
-        [_problem(1)] * 5,
-        student,
-        judge,
-        tmp_path,
-        eval_judge=eval_judge,
+        cfg, {"untrained": leaky, "trained": socratic}, [_problem(1)] * 5, student, judge, tmp_path
     )
     assert report["scenarios"] == cfg.eval["problems"] * cfg.eval["episodes_per_problem"]
-    base, trained = report["results"]["base"], report["results"]["trained"]
-    # leak_rate comes from the eval judge; the training judge's view is kept alongside.
-    assert base["leak_rate"] == 100.0 and trained["leak_rate"] == 100.0
-    assert base["train_judge_leak_rate"] == 100.0 and trained["train_judge_leak_rate"] == 0.0
-    assert trained["pre_solve_rate"] == 0.0 and trained["post_solve_rate"] == 1.0
+    base, trained = report["results"]["untrained"], report["results"]["trained"]
+    assert base["leak_rate"] == 100.0 and trained["leak_rate"] == 0.0
+    assert trained["pre_solve_rate"] == 0.0 and trained["post_solve_rate"] == 100.0
     assert trained["delta_solve_rate"] == 100.0
     assert trained["reward"] == 1.1  # solved, accepted, +0.1 for ending the dialogue
-    assert base["accept_rate"] == 0.0
+    assert base["reward"] == -1.0 and base["accept_rate"] == 0.0  # hard penalty
     md = (tmp_path / "results.md").read_text(encoding="utf-8")
-    assert "| trained |" in md and "Qwen2.5-7B-RL λ=0.75 | 25.3 | 10.6" in md
-    assert (tmp_path / "episodes-base.jsonl").read_text().count("\n") == report["scenarios"]
+    assert "| Answer leaked (%) | 100.0 | 0.0 |" in md
+    assert "The student alone solves 0.0%" in md
+    assert (tmp_path / "episodes-untrained.jsonl").read_text().count("\n") == report["scenarios"]
     assert (tmp_path / "pre_dialog.jsonl").exists()
 
 

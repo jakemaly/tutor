@@ -1,13 +1,11 @@
 """One GPU, one memory budget: everything together stays under `[gpu] max_fraction` (80%).
 
-The student, judge, and (during evaluation) the Gemma leak judge are vLLM servers, each holding
-a fixed `gpu_memory_utilization` share. The tutor is trained in this process; it gets whatever
-the servers leave under the target, enforced as a hard PyTorch cap
-(`torch.cuda.set_per_process_memory_fraction`). The rest of the GPU stays free as headroom, so
-spikes (CUDA graphs, kernels' workspaces, fragmentation) do not end in out-of-memory errors.
+The student and judge are vLLM servers, each holding a fixed `gpu_memory_utilization` share. The
+tutor runs in this process and gets whatever the servers leave under the target, enforced as a
+hard PyTorch cap (`torch.cuda.set_per_process_memory_fraction`). The rest of the GPU stays free,
+so spikes (CUDA graphs, kernel workspaces, fragmentation) do not end in out-of-memory errors.
 
-    training:    student + judge              + tutor = max_fraction
-    evaluation:  student + judge + eval_judge + tutor = max_fraction
+    student + judge + tutor = max_fraction
 """
 
 from dataclasses import dataclass
@@ -22,47 +20,34 @@ class GPUBudget:
     servers: dict[str, float]  # vLLM server name -> gpu_memory_utilization
     tutor: float  # this process's cap
 
-    def markdown(self, total_gib: float | None = None) -> str:
-        def size(f: float) -> str:
-            return f"{f:.0%}" + (f" ({f * total_gib:.1f} GiB)" if total_gib else "")
-
-        rows = [f"| {name} (vLLM) | {size(f)} |" for name, f in self.servers.items()]
-        rows.append(f"| tutor (PyTorch cap) | {size(self.tutor)} |")
-        rows.append(f"| **total** | **{size(self.max_fraction)}** |")
-        rows.append(f"| left free | {size(1 - self.max_fraction)} |")
-        return "| part | GPU share |\n| --- | ---: |\n" + "\n".join(rows)
+    def summary(self) -> str:
+        parts = [f"{name} {f:.0%}" for name, f in self.servers.items()]
+        return ", ".join([*parts, f"tutor {self.tutor:.0%}"]) + f" = {self.max_fraction:.0%}"
 
 
-def plan(cfg, *, evaluating: bool = False) -> GPUBudget:
-    """The budget for training, or for evaluation (adds the eval judge if one is configured)."""
+def plan(cfg) -> GPUBudget:
+    """The servers' shares plus the tutor's cap, checked to fit under the target."""
     gpu = getattr(cfg, "gpu", {}) or {}
     target = float(gpu.get("max_fraction", DEFAULT_MAX_FRACTION))
     minimum = float(gpu.get("min_tutor_fraction", DEFAULT_MIN_TUTOR))
     servers = {"student": float(cfg.student["gpu_memory_utilization"])}
     if not cfg.judge.get("share_student", False):
         servers["judge"] = float(cfg.judge["gpu_memory_utilization"])
-    if evaluating and cfg.eval_judge:
-        servers["eval_judge"] = float(cfg.eval_judge["gpu_memory_utilization"])
     tutor = round(target - sum(servers.values()), 4)
     if not 0 < target <= 0.95:
         raise ValueError(f"[gpu] max_fraction must be in (0, 0.95], got {target}")
     if tutor < minimum:
-        phase = "evaluation" if evaluating else "training"
         raise ValueError(
-            f"GPU budget for {phase} does not fit: the vLLM servers take "
-            f"{sum(servers.values()):.0%} ({servers}) of the {target:.0%} target, leaving the "
-            f"tutor {tutor:.0%}; it needs at least {minimum:.0%}. Lower a server's "
-            "gpu_memory_utilization or raise [gpu] max_fraction."
+            f"GPU budget does not fit: the vLLM servers take {sum(servers.values()):.0%} "
+            f"({servers}) of the {target:.0%} target, leaving the tutor {tutor:.0%}; it needs at "
+            f"least {minimum:.0%}. Lower a server's gpu_memory_utilization or raise "
+            "[gpu] max_fraction."
         )
     return GPUBudget(target, servers, tutor)
 
 
 def cap_tutor(budget: GPUBudget, device: int = 0) -> None:
-    """Limit this process's PyTorch allocations to the tutor's share (call before loading it).
-
-    Lowering the cap later (for evaluation) is safe as long as memory in use fits: cached but
-    unused blocks are released first.
-    """
+    """Limit this process's PyTorch allocations to the tutor's share (call before loading it)."""
     import gc
 
     import torch

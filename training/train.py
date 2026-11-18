@@ -1,4 +1,4 @@
-"""PedagogicalRL replication: multi-turn GRPO for the Qwen3.5-9B tutor (issue #46, week 1).
+"""PedagogicalRL-style multi-turn GRPO for the Qwen3.5-9B tutor (issue #46, week 1).
 
 Usage (one GPU with torch, transformers>=5, peft, datasets installed):
     python training/train.py --config training/configs/molab.toml --launch-servers
@@ -7,14 +7,14 @@ Usage (one GPU with torch, transformers>=5, peft, datasets installed):
 own venv). Without it, point TRAIN_STUDENT_* and TRAIN_JUDGE_* (BASE_URL, MODEL, API_KEY) at
 existing OpenAI-compatible endpoints. The marimo notebook `tutor_rl_molab.py` runs the same code.
 
-Loop per step (paper section 5.3 and appendix A.2), see tutor_rl/grpo.py:
-    1. Take `problems_per_step` (16) Big-Math problems; pick who opens each dialogue.
-    2. For each, roll out `episodes_per_problem` (8) dialogues with `episode.run_episodes`
-       (tutor = current LoRA policy, all dialogues batched in lockstep), then K=8 student solutions.
-    3. Score each with `rewards.score_episodes` (solve rate, two judges, template reward);
-       compute `rewards.group_advantages` per problem.
-    4. `num_iterations` (2) clipped GRPO updates on the tutor's own tokens only, with KL
-       penalty `beta` against the base model.
+Loop per step, see tutor_rl/grpo.py:
+    1. Take `problems_per_step` problems; pick who opens each dialogue (student or tutor).
+    2. For each, roll out `episodes_per_problem` dialogues with `episode.run_episodes`
+       (tutor = current LoRA policy, all dialogues batched in lockstep), then the student's
+       solutions after the dialogue.
+    3. Score each with `rewards.score_episodes` (solve rate, judges); compute
+       `rewards.group_advantages` per problem.
+    4. GRPO update on the tutor's own tokens only, with KL penalty `beta` against the base model.
     5. Every `save_steps`, save the LoRA adapter, the config, and the data manifest together.
 """
 

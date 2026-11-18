@@ -2,7 +2,7 @@
 
 Usage:
     python training/evaluate.py --config training/configs/molab.toml \
-        --policy base=hf:base --policy trained=hf:outputs/tutor-rl-qwen35-9b/final/adapter
+        --policy base=hf:base --policy trained=hf:outputs/tutor-rl-qwen35-9b-bigmath/final/adapter
 
     # or, once both are served through the OpenAI-compatible vLLM path:
     python training/evaluate.py --config training/configs/molab.toml \
@@ -10,14 +10,12 @@ Usage:
 
 `hf:base` / `hf:<adapter dir>` load the tutor locally (one base model, adapter switched on or
 off). `<ENV_PREFIX>` reads <PREFIX>_BASE_URL / _MODEL / _API_KEY, so the app's default provider
-(LLM_BASE_URL in .env) is never changed. Reports the paper's Table 2 metrics per policy (delta
-solve rate, leaked solution %), plus reward parts, on the same problems, seeds, student, judges.
-The leak judge is [eval_judge] (Gemma3-27B) when EVAL_JUDGE_BASE_URL/_MODEL are set, else the
-training judge. Writes results.json, results.md and per-policy episodes under <run_dir>/eval/.
+(LLM_BASE_URL in .env) is never changed. Reports, per policy, how often the tutor leaked the answer
+and how often the student solved the problem afterwards, on the same problems, seeds, student and
+judge. Writes results.json, results.md and per-policy episodes under <run_dir>/eval/.
 """
 
 import argparse
-import os
 from pathlib import Path
 
 from tutor_rl.config import load_config
@@ -47,15 +45,7 @@ def build_policies(cfg, specs: list[str]):
         from tutor_rl.gpu_budget import cap_tutor, plan
         from tutor_rl.policy import load_tutor
 
-        # The eval judge may be served on this GPU too: budget for it.
-        cap_tutor(
-            plan(
-                cfg,
-                evaluating=bool(
-                    os.environ.get(f"{cfg.eval_judge.get('env_prefix', 'EVAL_JUDGE')}_BASE_URL")
-                ),
-            )
-        )
+        cap_tutor(plan(cfg))  # everything together stays under [gpu] max_fraction
         adapter = next(iter(adapters.values()), None)
         hf_policy = load_tutor(cfg.tutor, adapter_path=adapter, trainable=False)
         policies.update({n: hf_policy for n in hf_adapters})
@@ -81,11 +71,6 @@ def main() -> None:
         prepare_data(cfg, run_dir / "data")
 
     policies, switch = build_policies(cfg, args.policy)
-    eval_judge = None
-    if cfg.eval_judge and os.environ.get(f"{cfg.eval_judge['env_prefix']}_BASE_URL"):
-        eval_judge = model_from_section(cfg.eval_judge)
-    else:
-        print("No eval judge endpoint set: the training judge also measures leaks.")
     report = evaluate(
         cfg,
         policies,
@@ -94,9 +79,7 @@ def main() -> None:
         model_from_section(cfg.judge),
         run_dir / "eval",
         before_each=switch,
-        eval_judge=eval_judge,
         final_student=model_from_section(cfg.student, max_tokens_key="max_tokens_final"),
-        on_progress=print,
     )
     print((run_dir / "eval" / "results.md").read_text())
     return report
