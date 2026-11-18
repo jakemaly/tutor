@@ -80,7 +80,7 @@ def _(mo):
     3. Turn on the GPU in molab's notebook specs. Expected: RTX PRO 6000, 96 GB.
     4. Run **smoke** first (a few minutes after downloads), then **molab**. If the session ends, open the notebook again, keep *Resume* ticked, and it continues from the newest checkpoint on the Hub. molab also stops notebooks that sit idle for 90 minutes, so keep the tab open while training.
 
-    **GPU layout:** student vLLM ~19 GB, judge vLLM ~17 GB, tutor training ~55 GB. Evaluation adds the Gemma-3-27B leak judge (~25 GB). Each new session downloads about 60 GB of weights (a few minutes).
+    **GPU memory:** everything together stays under **80%** of the GPU (`[gpu] max_fraction` in the config), leaving the rest free so memory spikes don't crash the run. While training, the student and judge vLLM servers take 15% each and the tutor is capped at 50%. During evaluation the Gemma-3-27B leak judge takes 24%, and the tutor's cap shrinks to 26%. Each new session downloads about 60 GB of weights (a few minutes).
     """)
     return
 
@@ -240,9 +240,18 @@ def _(
     if hf_token.value:
         os.environ["HF_TOKEN"] = hf_token.value
 
+    # Checked now, before any download: the servers and the tutor must fit under [gpu] max_fraction.
+    from tutor_rl.gpu_budget import plan as _gpu_plan
+
+    _train_budget = _gpu_plan(cfg)
+    _eval_budget = _gpu_plan(cfg, evaluating=True)
     _t = cfg.train
     mo.md(f"""
     **Run** `{cfg.run_name}` → `{run_dir}`
+
+    **GPU budget:** at most {_train_budget.max_fraction:.0%} of GPU memory in use. Training:
+    {', '.join(f'{_k} {_v:.0%}' for _k, _v in _train_budget.servers.items())}, tutor {_train_budget.tutor:.0%}.
+    Evaluation: {', '.join(f'{_k} {_v:.0%}' for _k, _v in _eval_budget.servers.items())}, tutor {_eval_budget.tutor:.0%}.
 
     | Role | Model | Revision |
     | --- | --- | --- |
@@ -408,9 +417,15 @@ def _(mo):
 @app.cell
 def _(cfg, deps_ready, mo, servers):
     assert deps_ready and servers  # GPU memory for vLLM is reserved first
+    from torch.cuda import get_device_properties as _device
+
+    from tutor_rl.gpu_budget import cap_tutor, plan
     from tutor_rl.openai_chat import model_from_section
     from tutor_rl.policy import load_tutor
 
+    # Hard cap on this process: what the servers leave under [gpu] max_fraction (80%).
+    _budget = plan(cfg)
+    cap_tutor(_budget)
     with mo.status.spinner(title=f"Loading {cfg.tutor['model']} (bf16 + LoRA)…"):
         tutor = load_tutor(cfg.tutor)
     student = model_from_section(cfg.student)
@@ -418,7 +433,11 @@ def _(cfg, deps_ready, mo, servers):
     final_student = model_from_section(cfg.student, max_tokens_key="max_tokens_final")
     judge = model_from_section(cfg.judge)
     _trainable = sum(_p.numel() for _p in tutor.model.parameters() if _p.requires_grad)
-    mo.md(f"Tutor loaded: {_trainable / 1e6:.1f}M trainable LoRA parameters.")
+    mo.vstack([
+        mo.md(f"Tutor loaded: {_trainable / 1e6:.1f}M trainable LoRA parameters."),
+        mo.md(_budget.markdown(_device(0).total_memory / 1024**3)),
+        mo.md(gpu_report_md()),
+    ])
     return final_student, judge, student, tutor
 
 
@@ -712,7 +731,7 @@ def _(mo):
 
 @app.cell
 def _(mo):
-    use_eval_judge = mo.ui.checkbox(True, label="Start the Gemma-3-27B leak judge (paper's test-time judge, ~25 GB)")
+    use_eval_judge = mo.ui.checkbox(True, label="Start the Gemma-3-27B leak judge (paper's test-time judge, 24% of the GPU)")
     eval_button = mo.ui.run_button(label="Evaluate base vs. trained")
     mo.hstack([eval_button, use_eval_judge], justify="start")
     return eval_button, use_eval_judge
@@ -735,11 +754,9 @@ def _(
     work_root,
 ):
     mo.stop(not eval_button.value, mo.md("*Click to evaluate.*"))
-    import gc
-
-    import torch as _torch
-
     from tutor_rl.evaluation import evaluate
+    from tutor_rl.gpu_budget import cap_tutor as _cap_tutor
+    from tutor_rl.gpu_budget import plan as _plan
     from tutor_rl.openai_chat import model_from_section as _from_section
     from tutor_rl.policy import load_adapter_weights
     from tutor_rl.vllm_server import ensure_vllm_env as _ensure_vllm
@@ -758,8 +775,9 @@ def _(
 
     _eval_judge = None
     if use_eval_judge.value and cfg.eval_judge:
-        gc.collect()
-        _torch.cuda.empty_cache()  # give the training run's cached blocks back for vLLM
+        # Shrink the tutor's cap first (cached blocks go back to the GPU), so Gemma's share is free
+        # and the total stays under [gpu] max_fraction.
+        _cap_tutor(_plan(cfg, evaluating=True))
         with mo.status.spinner(title=f"Starting {cfg.eval_judge['model']} (downloads ~20 GB once)…"):
             start_eval_judge(cfg, _ensure_vllm(Path(work_root.value) / "vllm-env"), run_dir / "logs")
         _eval_judge = _from_section(cfg.eval_judge)

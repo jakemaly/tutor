@@ -44,6 +44,7 @@ class RunConfig:
     eval: dict
     text: str  # the TOML as written, saved next to every checkpoint
     eval_judge: dict = field(default_factory=dict)  # optional separate judge for evaluation
+    gpu: dict = field(default_factory=dict)  # [gpu] max_fraction etc., see gpu_budget.py
 
     @property
     def output_dir(self) -> Path:
@@ -70,5 +71,6 @@ def load_config(path: str | Path) -> RunConfig:
         data=raw["data"],
         eval=raw.get("eval", {}),
         eval_judge=raw.get("eval_judge", {}),
+        gpu=raw.get("gpu", {}),
         text=text,
     )

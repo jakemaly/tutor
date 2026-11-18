@@ -34,7 +34,7 @@ temperature = 0.6          # not stated; Llama-3.1's default
 max_tokens_per_turn = 256  # chat turns ("do not respond with overly long messages")
 max_tokens_final = 1024    # pre- and post-dialog step-by-step solutions
 port = 8101
-gpu_memory_utilization = 0.20
+gpu_memory_utilization = 0.15  # 14 GB: FP8 weights ~9 GB + KV cache
 max_model_len = 8192
 max_num_seqs = 128  # also bounds vLLM's CUDA-graph memory
 
@@ -47,7 +47,7 @@ vllm_args = ["--enable-prefix-caching"]
 temperature = 0.7          # not stated; must be > 0 for two samples to differ
 max_tokens = 512
 port = 8102
-gpu_memory_utilization = 0.18
+gpu_memory_utilization = 0.15  # 14 GB: AWQ weights ~10 GB + KV cache
 max_model_len = 8192
 max_num_seqs = 128  # also bounds vLLM's CUDA-graph memory
 share_student = false      # true: the student's server also judges (not the paper's setup)
@@ -62,9 +62,17 @@ vllm_args = ["--enable-prefix-caching", "--limit-mm-per-prompt", '{"image": 0}']
 temperature = 0.0
 max_tokens = 512
 port = 8103
-gpu_memory_utilization = 0.26
+gpu_memory_utilization = 0.24  # 23 GB: 4-bit weights ~19 GB + KV cache
 max_model_len = 8192
 max_num_seqs = 64
+
+[gpu]
+# Everything on the GPU together stays under max_fraction of its memory (see tutor_rl/gpu_budget.py):
+#   training:   student 15% + judge 15%               + tutor 50% = 80%
+#   evaluation: student 15% + judge 15% + Gemma 24%   + tutor 26% = 80%
+# The tutor's share is a hard PyTorch cap: whatever the servers leave under the target.
+max_fraction = 0.80
+min_tutor_fraction = 0.24
 
 [episode]
 max_turns = 4              # paper: 16: total tutor + student messages
@@ -103,7 +111,7 @@ output_dir = "outputs/pedagogicalrl-smoke"  # outside git; see .gitignore
 problems = 4               # paper: 500: the 500 held-out Big-Math problems
 episodes_per_problem = 1
 leak_judge_samples = 1
-generation_batch_size = 16  # tutor batch during eval: Gemma takes ~25 GB more GPU
+generation_batch_size = 12  # tutor batch during eval, when its cap shrinks to 26% for Gemma
 seed = 1234
 
 [data]

@@ -44,8 +44,18 @@ def build_policies(cfg, specs: list[str]):
     if len(set(adapters.values())) > 1:
         raise SystemExit("Compare at most one local adapter per run (plus hf:base).")
     if hf_adapters:
+        from tutor_rl.gpu_budget import cap_tutor, plan
         from tutor_rl.policy import load_tutor
 
+        # The eval judge may be served on this GPU too: budget for it.
+        cap_tutor(
+            plan(
+                cfg,
+                evaluating=bool(
+                    os.environ.get(f"{cfg.eval_judge.get('env_prefix', 'EVAL_JUDGE')}_BASE_URL")
+                ),
+            )
+        )
         adapter = next(iter(adapters.values()), None)
         hf_policy = load_tutor(cfg.tutor, adapter_path=adapter, trainable=False)
         policies.update({n: hf_policy for n in hf_adapters})

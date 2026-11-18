@@ -49,8 +49,11 @@ def main() -> None:
             cfg, ensure_vllm_env(Path(args.vllm_env)), run_dir / "logs"
         )
     try:
+        from tutor_rl.gpu_budget import cap_tutor, plan
         from tutor_rl.grpo import GRPOTrainer
         from tutor_rl.policy import load_tutor
+
+        cap_tutor(plan(cfg))  # everything together stays under [gpu] max_fraction
 
         trainer = GRPOTrainer(
             cfg,

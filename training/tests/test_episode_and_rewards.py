@@ -203,3 +203,26 @@ def test_molab_config_has_the_papers_values() -> None:
     smoke = load_config(CONFIGS / "smoke.toml")
     assert smoke.tutor == {**cfg.tutor, "max_tokens_per_turn": 128, "generation_batch_size": 16}
     assert (smoke.student, smoke.judge, smoke.reward) == (cfg.student, cfg.judge, cfg.reward)
+
+
+def test_gpu_budget_keeps_everything_under_80_percent() -> None:
+    from dataclasses import replace
+
+    from tutor_rl.gpu_budget import plan
+
+    for name in ("molab", "smoke"):
+        cfg = load_config(CONFIGS / f"{name}.toml")
+        train, evaluating = plan(cfg), plan(cfg, evaluating=True)
+        assert cfg.gpu["max_fraction"] == 0.80
+        for budget in (train, evaluating):
+            assert sum(budget.servers.values()) + budget.tutor == pytest.approx(0.80)
+        assert set(train.servers) == {"student", "judge"} and train.tutor == pytest.approx(0.50)
+        assert "eval_judge" in evaluating.servers and evaluating.tutor == pytest.approx(0.26)
+        assert "| **total** | **80%** |" in train.markdown()
+    # Sharing the student's server frees the judge's share for the tutor.
+    shared = replace(cfg, judge={**cfg.judge, "share_student": True})
+    assert plan(shared).tutor == pytest.approx(0.65)
+    # A config that cannot fit fails up front, before any download.
+    greedy = replace(cfg, student={**cfg.student, "gpu_memory_utilization": 0.5})
+    with pytest.raises(ValueError, match="does not fit"):
+        plan(greedy, evaluating=True)
