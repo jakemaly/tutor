@@ -95,7 +95,7 @@ def serve():
         "--host", "0.0.0.0",
         "--port", "8000",
         "--download-dir", "/cache/huggingface/hub",
-        # Use the longest context that fits this GPU; /v1/models reports the chosen size.
+        # Use the longest context that fits this GPU.
         "--max-model-len", "auto",
         "--max-num-seqs", "4",
         "--gpu-memory-utilization", "0.85",
