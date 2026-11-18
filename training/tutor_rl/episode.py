@@ -132,6 +132,28 @@ class Episode:
         }
 
 
+def tutor_prompt_text(tokenizer, messages: Sequence[Message], *, enable_thinking=False) -> str:
+    """The tutor's prompt as text, with Qwen3.5's chat template (used in training and serving).
+
+    Qwen3.5's template refuses a prompt with no user message ("No user query found"), which is
+    the tutor's first turn when it opens the dialogue. Then a placeholder user message is
+    rendered and its block cut out, leaving system + generation prompt.
+    """
+    chat = [{"role": m.role, "content": m.content} for m in messages]
+    placeholder = "\x00tutor-opens\x00"
+    no_user = not any(m["role"] == "user" for m in chat)
+    if no_user:
+        chat.append({"role": "user", "content": placeholder})
+    text = tokenizer.apply_chat_template(
+        chat, tokenize=False, add_generation_prompt=True, enable_thinking=enable_thinking
+    )
+    if no_user:
+        block = f"<|im_start|>user\n{placeholder}<|im_end|>\n"
+        assert block in text, "unexpected chat template layout"
+        text = text.replace(block, "")
+    return text
+
+
 def pre_dialog_prompt(problem: Problem) -> list[Message]:
     """The student's chain-of-thought attempt before any dialogue (paper Figure 9)."""
     return [Message("user", STUDENT_PRE_DIALOG.format(problem=problem.question))]

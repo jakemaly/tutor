@@ -13,6 +13,7 @@ Setup (Hugging Face org and token, molab GPU, what goes where) is in [WORKFLOW.m
 1. Open [`tutor_rl_molab.py`](tutor_rl_molab.py) in molab with the GPU on and paste a Hugging Face token.
 2. Start the servers and check the sanity dialogue.
 3. Train, then evaluate untrained vs. trained.
+4. Week 2: serve the checkpoint with [`deployment/modal_qwen_trained.py`](../deployment/modal_qwen_trained.py) and compare base vs. trained through the endpoint (notebook section 6, [docs/modal-serving.md](../docs/modal-serving.md#serve-the-trained-tutor-issue-46)).
 
 Run the `smoke` config once before `molab`. Checkpoints, metrics, chat logs and results upload to a private repo in the `socratictutor` org as they are saved, and a new session resumes from the Hub.
 
@@ -20,7 +21,7 @@ Run the `smoke` config once before `molab`. Checkpoints, metrics, chat logs and 
 
 | Path | Purpose |
 | --- | --- |
-| `tutor_rl_molab.py` | marimo notebook: setup, servers, training with a live plot and chat logs, untrained-vs-trained evaluation, export |
+| `tutor_rl_molab.py` | marimo notebook: setup, servers, training with a live plot and chat logs, untrained-vs-trained evaluation, served base-vs-trained evaluation, export |
 | `configs/molab.toml` | The run: 60 steps × 24 dialogues on one RTX PRO 6000 (96 GB) |
 | `configs/smoke.toml` | The same models and code path in a few minutes |
 | `prepare_data.py` | The Big-Math split at a pinned revision → `data/{train,eval}.jsonl` + `manifest.json` |
@@ -35,7 +36,8 @@ Run the `smoke` config once before `molab`. Checkpoints, metrics, chat logs and 
 | `tutor_rl/vllm_server.py` | Installs vLLM in its own venv and serves the student and judge locally |
 | `tutor_rl/gpu_budget.py` | Keeps everything on the GPU under 80% of its memory |
 | `tutor_rl/hub.py`, `tutor_rl/export.py` | Hub uploads and resume; provenance and zip |
-| `tutor_rl/openai_chat.py`, `config.py`, `data.py` | Endpoint client, config loading, problem files |
+| `tutor_rl/openai_chat.py` | Endpoint clients: the student and judge (chat), and the served tutor (`ServedTutor`, same prompt as training) |
+| `tutor_rl/config.py`, `data.py` | Config loading, problem files |
 | `tests/` | Fake-model tests (no GPU) |
 
 ## Design notes

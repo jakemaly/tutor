@@ -87,3 +87,67 @@ Run `docker compose stop` to stop the local tutor.
 
 
 Verified the authenticated model endpoint, streamed a response directly from vLLM, and observed text streaming in the tutor browser. The deployment disables thinking by default and caps generated output at 512 tokens.
+
+
+
+## Serve the trained tutor (issue #46)
+
+
+
+`deployment/modal_qwen_trained.py` serves the RL-trained checkpoint for comparison. It is a separate Modal app (`socratic-tutor-qwen-trained`), so the deployment above and the app's `LLM_BASE_URL` stay as they are. One vLLM server on an L40S offers two model names:
+
+
+
+- `socratic-tutor-base`: Qwen3.5-9B in bf16, the model training started from.
+- `socratic-tutor-trained`: the same model with the trained LoRA adapter (`final/adapter` from `socratictutor/tutor-rl-qwen35-9b-bigmath` on Hugging Face).
+
+
+
+Both names share the same weights, server and settings, so any difference between them comes from the adapter. The server renames the adapter's weights to the layout vLLM expects when it starts. The run repo is private, so create a Modal secret named `huggingface` with a Hugging Face read token once (Modal dashboard → Secrets → Hugging Face, key `HF_TOKEN`). Then deploy:
+
+
+
+```powershell
+.\deployment\.venv\Scripts\python.exe -m modal deploy deployment/modal_qwen_trained.py
+```
+
+
+
+Check that both names are listed, using the endpoint URL from the deploy command and a proxy token. The first request waits a few minutes for a GPU:
+
+
+
+```powershell
+curl.exe -H "Authorization: Bearer YOUR_PROXY_TOKEN_ID.YOUR_PROXY_TOKEN_SECRET" https://YOUR-TRAINED-ENDPOINT/v1/models
+```
+
+
+
+To try the trained tutor in the app locally, set `LLM_MODEL=socratic-tutor-trained` and this endpoint's `LLM_BASE_URL` in your own `.env` only. The committed defaults do not change.
+
+
+
+### Compare base and trained
+
+
+
+The comparison needs the student and judge models on a GPU, so run it in the molab notebook (`training/tutor_rl_molab.py`):
+
+
+
+1. Start the student and judge (section 2).
+2. In section 6, paste the endpoint URL ending in `/v1` and the proxy token, then click *Evaluate served base vs. trained*.
+
+
+
+Both tutors get the same 100 held-out problems, openers, seeds, student and judge as in training's evaluation. The tutor's prompt is built with the same chat template as in training and sent to `/v1/completions`, with the same sampling settings. The bar chart, `results.md` and every dialogue go to `eval-served/` in the run repo. From a terminal with the student and judge running, `training/evaluate.py --policy base=TUTOR_BASE --policy trained=TUTOR_TRAINED` does the same, reading `TUTOR_BASE_BASE_URL`, `TUTOR_BASE_MODEL`, `TUTOR_BASE_API_KEY` and the matching `TUTOR_TRAINED_*` variables.
+
+
+
+Stop the app when done:
+
+
+
+```powershell
+.\deployment\.venv\Scripts\python.exe -m modal app stop socratic-tutor-qwen-trained
+```

@@ -4,24 +4,26 @@ Usage:
     python training/evaluate.py --config training/configs/molab.toml \
         --policy base=hf:base --policy trained=hf:outputs/tutor-rl-qwen35-9b-bigmath/final/adapter
 
-    # or, once both are served through the OpenAI-compatible vLLM path:
-    python training/evaluate.py --config training/configs/molab.toml \
-        --policy base=BASE_ENDPOINT_ENV_PREFIX --policy trained=TRAINED_ENDPOINT_ENV_PREFIX
+    # week 2: both served by deployment/modal_qwen_trained.py (see docs/modal-serving.md)
+    python training/evaluate.py --config training/configs/molab.toml --run-dir <dir> \
+        --policy base=TUTOR_BASE --policy trained=TUTOR_TRAINED
 
 `hf:base` / `hf:<adapter dir>` load the tutor locally (one base model, adapter switched on or
-off). `<ENV_PREFIX>` reads <PREFIX>_BASE_URL / _MODEL / _API_KEY, so the app's default provider
-(LLM_BASE_URL in .env) is never changed. Reports, per policy, how often the tutor leaked the answer
-and how often the student solved the problem afterwards, on the same problems, seeds, student and
-judge. Writes results.json, results.md and per-policy episodes under <run_dir>/eval/.
+off). `<ENV_PREFIX>` is a served tutor: it reads <PREFIX>_BASE_URL / _MODEL / _API_KEY, so the
+app's default provider (LLM_BASE_URL in .env) is never changed. Reports, per policy, how often
+the tutor leaked the answer and how often the student solved the problem afterwards, on the same
+problems, seeds, student and judge. Writes results.json, results.md and per-policy episodes
+under <run_dir>/eval/.
 """
 
 import argparse
+import os
 from pathlib import Path
 
 from tutor_rl.config import load_config
 from tutor_rl.data import prepare_data, read_problems
 from tutor_rl.evaluation import evaluate
-from tutor_rl.openai_chat import OpenAIChatModel, model_from_section
+from tutor_rl.openai_chat import model_from_section, served_tutor
 
 
 def build_policies(cfg, specs: list[str]):
@@ -32,12 +34,11 @@ def build_policies(cfg, specs: list[str]):
         if target.startswith("hf:"):
             hf_adapters[name] = target[3:]
         else:
-            policies[name] = OpenAIChatModel.from_env(
-                target,
-                temperature=cfg.tutor.get("temperature", 1.0),
-                max_tokens=cfg.tutor.get("max_tokens_per_turn", 256),
-                extra_body={"chat_template_kwargs": {"enable_thinking": False}},
-            )
+            url, model = os.environ.get(f"{target}_BASE_URL"), os.environ.get(f"{target}_MODEL")
+            if not (url and model):
+                raise SystemExit(f"Set {target}_BASE_URL and {target}_MODEL (and {target}_API_KEY)")
+            api_key = os.environ.get(f"{target}_API_KEY", "EMPTY")
+            policies[name] = served_tutor(cfg.tutor, url, model, api_key)
     adapters = {n: a for n, a in hf_adapters.items() if a != "base"}
     if len(set(adapters.values())) > 1:
         raise SystemExit("Compare at most one local adapter per run (plus hf:base).")

@@ -693,7 +693,54 @@ def _(
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ## 6. Export
+    ## 6. Served: base vs. trained (week 2)
+
+    The same comparison, but the tutor runs behind the OpenAI-compatible vLLM endpoint from `deployment/modal_qwen_trained.py`: one server, `socratic-tutor-base` and `socratic-tutor-trained` (the base model with the trained adapter). Deploy it first (docs/modal-serving.md). Only the student and judge servers are needed here (section 2); skip sections 3 to 5. The app's own endpoint is not touched.
+    """)
+    return
+
+
+@app.cell
+def _(mo):
+    served_url = mo.ui.text(label="Endpoint URL (ends in /v1)", full_width=True)
+    served_key = mo.ui.text(label="Modal proxy token (ID.SECRET)", kind="password", full_width=True)
+    served_button = mo.ui.run_button(label="Evaluate served base vs. trained")
+    mo.vstack([served_url, served_key, served_button])
+    return served_button, served_key, served_url
+
+
+@app.cell
+def _(cfg, eval_problems, hub, mo, run_dir, served_button, served_key, served_url, servers):
+    mo.stop(not served_button.value, mo.md("*Fill in the endpoint, then click to evaluate.*"))
+    assert servers, "start the student and judge first (section 2)"
+    from tutor_rl.evaluation import evaluate as _evaluate
+    from tutor_rl.openai_chat import model_from_section as _from_section
+    from tutor_rl.openai_chat import served_tutor
+
+    _url = served_url.value.strip().rstrip("/")
+    _tutors = {
+        _name: served_tutor(cfg.tutor, _url, f"socratic-tutor-{_name}", served_key.value.strip() or "EMPTY")
+        for _name in ("base", "trained")
+    }
+    with mo.status.spinner(title="Evaluating the served tutors (the first request waits for a Modal GPU)…"):
+        served_report = _evaluate(
+            cfg, _tutors, eval_problems, _from_section(cfg.student), _from_section(cfg.judge),
+            run_dir / "eval-served",
+            final_student=_from_section(cfg.student, max_tokens_key="max_tokens_final"),
+        )
+    if hub is not None:
+        hub.upload_run(run_dir, include=["eval-served/**"], message="Served evaluation").result()
+    mo.vstack([
+        plot_comparison(served_report),
+        mo.md((run_dir / "eval-served" / "results.md").read_text(encoding="utf-8")),
+    ])
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## 7. Export
 
     Writes `provenance.json` (repo commit, model and dataset revisions, package versions, GPU) and uploads it to the run repo, plus an optional local zip of the run (no optimizer states). Download the zip before the session ends; molab will not keep it.
     """)

@@ -7,9 +7,9 @@ import urllib.error
 import urllib.request
 from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
-from tutor_rl.episode import Message
+from tutor_rl.episode import Message, tutor_prompt_text
 
 
 @dataclass
@@ -61,8 +61,13 @@ class OpenAIChatModel:
         }
         if seed is not None:
             body["seed"] = seed
+        choices = self._post("/chat/completions", body)
+        return [c["message"]["content"] or "" for c in choices]
+
+    def _post(self, path: str, body: dict) -> list[dict]:
+        """POST to the endpoint with retries on 5xx and network errors; returns sorted choices."""
         request = urllib.request.Request(
-            self.base_url.rstrip("/") + "/chat/completions",
+            self.base_url.rstrip("/") + path,
             data=json.dumps(body).encode(),
             headers={"Content-Type": "application/json", "Authorization": f"Bearer {self.api_key}"},
         )
@@ -70,8 +75,7 @@ class OpenAIChatModel:
             try:
                 with urllib.request.urlopen(request, timeout=self.timeout) as response:
                     payload = json.loads(response.read())
-                choices = sorted(payload["choices"], key=lambda c: c["index"])
-                return [c["message"]["content"] or "" for c in choices]
+                return sorted(payload["choices"], key=lambda c: c["index"])
             except urllib.error.HTTPError as e:
                 if e.code < 500 or attempt == self.retries:
                     detail = e.read().decode(errors="replace")[:500]
@@ -82,6 +86,69 @@ class OpenAIChatModel:
                     raise
                 time.sleep(2**attempt)
         raise AssertionError("unreachable")
+
+
+@dataclass
+class ServedTutor(OpenAIChatModel):
+    """The tutor behind a vLLM endpoint, prompted exactly as in training.
+
+    Sends the prompt text the trainer used (`tutor_prompt_text`, the tutor's own chat template)
+    to `/v1/completions`, so the served and local tutors see the same tokens; the chat route
+    would reject the tutor's opening turn, which has no user message. Records which replies hit
+    `max_tokens` so the reward's length penalty works as in training.
+    """
+
+    tokenizer: object = None  # the tutor's tokenizer (transformers)
+    enable_thinking: bool = False
+    _cut: set = field(default_factory=set, repr=False)
+
+    def _request(self, messages: Sequence[Message], n: int, seed: int | None) -> list[str]:
+        prompt = tutor_prompt_text(self.tokenizer, messages, enable_thinking=self.enable_thinking)
+        body = {
+            "model": self.model,
+            "prompt": prompt,
+            "temperature": self.temperature,
+            "max_tokens": self.max_tokens,
+            "n": n,
+            **(self.extra_body or {}),
+        }
+        if seed is not None:
+            body["seed"] = seed
+        texts = []
+        for choice in self._post("/completions", body):
+            text = choice["text"] or ""
+            if choice.get("finish_reason") == "length":
+                self._cut.add((prompt, text))
+            texts.append(text)
+        return texts
+
+    def was_truncated(self, messages: Sequence[Message], text: str) -> bool:
+        prompt = tutor_prompt_text(self.tokenizer, messages, enable_thinking=self.enable_thinking)
+        return (prompt, text) in self._cut
+
+
+def served_tutor(tutor_cfg: dict, base_url: str, model: str, api_key: str = "EMPTY") -> ServedTutor:
+    """The tutor behind an OpenAI-compatible endpoint, sampled with the training settings."""
+    from transformers import AutoTokenizer
+
+    tokenizer = AutoTokenizer.from_pretrained(tutor_cfg["model"], revision=tutor_cfg["revision"])
+    return ServedTutor(
+        base_url=base_url,
+        model=model,
+        api_key=api_key,
+        tokenizer=tokenizer,
+        enable_thinking=tutor_cfg.get("enable_thinking", False),
+        temperature=tutor_cfg.get("temperature", 1.0),
+        max_tokens=tutor_cfg.get("max_tokens_per_turn", 256),
+        # As in training (policy.py): the full distribution, none of the model's sampling defaults.
+        extra_body={
+            "top_p": tutor_cfg.get("top_p", 1.0),
+            "top_k": 0,
+            "min_p": 0.0,
+            "repetition_penalty": 1.0,
+            "presence_penalty": 0.0,
+        },
+    )
 
 
 def model_from_section(section: dict, *, max_tokens_key: str = "max_tokens_per_turn"):

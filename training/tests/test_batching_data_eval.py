@@ -10,7 +10,7 @@ from tutor_rl.config import EpisodeConfig, load_config
 from tutor_rl.data import bigmath_problem, gsm8k_problem, read_problems, write_problems
 from tutor_rl.episode import Message, Problem, run_episodes
 from tutor_rl.evaluation import evaluate
-from tutor_rl.openai_chat import OpenAIChatModel
+from tutor_rl.openai_chat import OpenAIChatModel, ServedTutor
 from tutor_rl.prompts import END_TOKEN
 
 CONFIGS = Path(__file__).parents[1] / "configs"
@@ -95,6 +95,64 @@ def test_openai_client_batches_with_seeds(monkeypatch) -> None:
         seen = sorted(_ChatHandler.seen, key=lambda b: b["seed"])
         assert [b["seed"] for b in seen] == [10, 11]
         assert seen[0]["model"] == "student" and seen[0]["max_tokens"] == 7
+    finally:
+        server.shutdown()
+
+
+class _FakeQwenTokenizer:
+    """Renders the ChatML layout Qwen3.5 uses, and refuses prompts with no user message."""
+
+    def apply_chat_template(self, chat, *, tokenize, add_generation_prompt, enable_thinking):
+        assert not tokenize and add_generation_prompt and not enable_thinking
+        if not any(m["role"] == "user" for m in chat):
+            raise ValueError("No user query found in messages.")
+        text = "".join(f"<|im_start|>{m['role']}\n{m['content']}<|im_end|>\n" for m in chat)
+        return text + "<|im_start|>assistant\n<think>\n\n</think>\n\n"
+
+
+class _CompletionHandler(BaseHTTPRequestHandler):
+    seen: list[dict] = []
+
+    def do_POST(self):  # noqa: N802
+        assert self.path == "/v1/completions"
+        body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+        _CompletionHandler.seen.append(body)
+        # A long prompt "runs out of tokens"; a short one stops normally.
+        finish = "length" if "student" in body["prompt"] else "stop"
+        text = f"reply{len(_CompletionHandler.seen)}"
+        choices = [{"index": 0, "text": text, "finish_reason": finish}]
+        payload = json.dumps({"choices": choices}).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.end_headers()
+        self.wfile.write(payload)
+
+    def log_message(self, *args):
+        pass
+
+
+def test_served_tutor_sends_the_training_prompt_and_flags_cut_replies() -> None:
+    server = HTTPServer(("127.0.0.1", 0), _CompletionHandler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        tutor = ServedTutor(
+            base_url=f"http://127.0.0.1:{server.server_port}/v1",
+            model="socratic-tutor-trained",
+            tokenizer=_FakeQwenTokenizer(),
+            seed=5,
+        )
+        opens = [Message("system", "You are a tutor.")]  # the tutor opens: no user message
+        answers = opens + [Message("user", "I am the student")]
+        out = tutor.generate_batch([opens, answers])
+        prompts = {b["seed"]: b["prompt"] for b in _CompletionHandler.seen}
+        assert prompts[5] == (
+            "<|im_start|>system\nYou are a tutor.<|im_end|>\n"
+            "<|im_start|>assistant\n<think>\n\n</think>\n\n"
+        )
+        assert "I am the student" in prompts[6]
+        assert _CompletionHandler.seen[0]["model"] == "socratic-tutor-trained"
+        assert not tutor.was_truncated(opens, out[0][0])
+        assert tutor.was_truncated(answers, out[1][0])
     finally:
         server.shutdown()
 
