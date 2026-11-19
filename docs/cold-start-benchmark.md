@@ -458,21 +458,18 @@ What this sample does and does not show:
   into host memory, and the snapshot is taken at that point. Whether the awake sample still
   includes that buffer is unknown.
 
-**Reservation change after this validation.** The reservation was raised to
-`memory=20480` (20 GiB). That leaves about 2.9 GiB (about 17%) above the one sample.
-It may not cover the unmeasured peaks.
+**Reservation.** The function keeps `memory=16384` (16 GiB reserved), and every live test
+in this document passed with that value.
 
-- **What a reservation does.** It guarantees memory but is not a limit, so usage above it
-  is still allowed when the worker has room. No `(request, limit)` hard limit was added,
-  and `--gpu-memory-utilization` is unchanged.
+- **What the reservation does.** It guarantees 16 GiB but is not a limit. Using more, as
+  the observed 17.1 GiB did, depends on the worker having spare memory and is not
+  guaranteed.
+- **What is still unknown.** The 17.1 GiB includes an unknown amount of file cache, and
+  peak usage during startup, sleep, and restore was not measured.
 - **Billing.** Modal bills memory on whichever is higher, the reservation or actual usage,
-  at $0.00000222 per GiB per second (about $0.008 per GiB-hour). At the observed 17.1 GiB,
-  the billed memory rises by about 2.9 GiB, about $0.023 per container-hour. When usage
-  exceeds 20 GiB, billing follows usage as before.
-- **It does not change consumption.** The container uses the same memory as before; the
-  reservation only changes the guarantee and the minimum billed.
-- **Not yet run on Modal.** Every run in this document, including this validation, used
-  `memory=16384`.
+  at $0.00000222 per GiB per second (about $0.008 per GiB-hour).
+- **Unchanged settings.** No `(request, limit)` hard limit is set, and
+  `--gpu-memory-utilization` is unchanged.
 
 **Checks through the real backend and on the endpoint:**
 
