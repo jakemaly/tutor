@@ -2,9 +2,23 @@
 
 This benchmark measures a genuine cold start: the time from the first `/api/chat`
 request until the first nonempty answer text. It covers the real backend and the Modal
-deployments in [deployment/modal_qwen.py](../deployment/modal_qwen.py) and
-[deployment/modal_qwen_snapshot.py](../deployment/modal_qwen_snapshot.py). It splits the wait
+deployment in [deployment/modal_qwen.py](../deployment/modal_qwen.py). It splits the wait
 into startup stages, so changes to the deployment can be compared using the same method.
+
+**Deployment history.** The baseline, Triton-cache, and control runs measured the earlier
+plain deployment: a single Modal function that started vLLM on every cold start. The
+snapshot runs measured a separate snapshot app (`socratic-tutor-qwen-snapshot`). After the
+experiment, the plain deployment was removed. `modal_qwen.py` now contains only the
+snapshot server, deployed as `socratic-tutor-qwen`. Both sets of results are kept below as
+measured.
+
+**Settings since the measurements.** Every performance run below used
+`--max-model-len 4096` and a 512-token output cap (`max_new_tokens`). The token-limit
+change (#48) later removed the cap and switched to `--max-model-len auto`. Mentions of
+"limit 512" below describe the runs as they were measured. The final configuration (#48's
+settings in the consolidated snapshot server) was checked separately for correctness, not
+re-benchmarked: see
+[Validation with the token-limit settings](#validation-with-the-token-limit-settings-2026-11-18).
 
 Raw results: [docs/cold-start-results/](cold-start-results/) (one JSON file per trial).
 
@@ -16,7 +30,7 @@ Two changes were measured with this method on 2026-11-14:
 |---|---|---|
 | Baseline (kernels recompiled on every start) | 211.2 s (206.8–230.8) | 3 |
 | Persistent Triton cache ([modal_qwen.py](../deployment/modal_qwen.py)) | 171.1 s (155.0–181.4); contemporaneous control 156.8 s (150.3–162.8) | 3 + 3 |
-| GPU memory snapshot, **restored** ([modal_qwen_snapshot.py](../deployment/modal_qwen_snapshot.py)) | **12.3 s** (6.6–98.6) | 6 |
+| GPU memory snapshot, **restored** (now [modal_qwen.py](../deployment/modal_qwen.py)) | **12.3 s** (6.6–98.6) | 6 |
 | GPU memory snapshot, **snapshot being created** | 196.3 s (189.9–197.1) | 3 |
 
 - The **persistent Triton cache** removed about 60 s of kernel compilation from every cold
@@ -38,6 +52,12 @@ A re-test on 2026-11-18 added the route guard that hides vLLM's dev-mode routes.
 restored on an L40S in 6.2 s and 11.3 s, and on an L4 in 27.7 s from a separate L4
 snapshot. One restore waited 313.9 s for Modal to assign a GPU
 ([details](#re-test-with-the-route-guard-2026-11-18)).
+
+A final validation on 2026-11-18 deployed the consolidated server with #48's settings
+(`--max-model-len auto`, no output cap). Snapshot creation and two restores worked on an
+L40S, with no memory errors, and the feature and route-guard checks passed. It was a
+correctness check, not a new benchmark
+([details](#validation-with-the-token-limit-settings-2026-11-18)).
 
 ## Triton kernel cache
 
@@ -127,12 +147,13 @@ cache it had just produced, it took 13.5 s, and the first request dropped from 3
 
 ### What a snapshot captures
 
-[deployment/modal_qwen_snapshot.py](../deployment/modal_qwen_snapshot.py) is a separate
-Modal app (`socratic-tutor-qwen-snapshot`). It uses the same image, Volume, GPU list
+During the experiment, the snapshot server ran as a separate Modal app
+(`socratic-tutor-qwen-snapshot`). It used the same image, Volume, GPU list
 (`["L4", "L40S"]`), `cpu=2`, `memory=16384`, `min_containers=0`, `max_containers=1`,
-`scaledown_window=60`, and the same `vllm serve` command as
-[modal_qwen.py](../deployment/modal_qwen.py). It enables `enable_memory_snapshot=True`
-and `experimental_options={"enable_gpu_snapshot": True}` on a class. The class has:
+`scaledown_window=60`, and the same `vllm serve` command as the plain deployment it was
+compared against. It is now the only server in
+[modal_qwen.py](../deployment/modal_qwen.py). It enables `enable_memory_snapshot=True` and
+`experimental_options={"enable_gpu_snapshot": True}` on a class. The class has:
 
 1. A `@modal.enter(snap=True)` hook. It runs the whole normal startup: tokenizer sync, `vllm
    serve` (with `--enable-sleep-mode`) as a subprocess, GGUF parsing, model load, CUDA and
@@ -284,17 +305,18 @@ place: same container, `restored_from_other_container: false`.
   carries a random token that the container generates at startup and never sends out.
   The snapshot hooks use that token for sleep, wake-up, and metrics. The guard is pure ASGI
   and passes allowed requests through unchanged, so streaming and cancellation are
-  unaffected. `/metrics` is internal-only on this deployment; the plain deployment still
-  exposes it.
+  unaffected. `/metrics` is internal-only.
 - **GPU snapshots are alpha.** Modal says the driver-level checkpoint and restore are new.
-  A restore failure was not observed, so the fallback behavior was not measured.
+  A restore failure was not observed, so the fallback behavior was not measured. There is
+  no longer a separate plain app to switch to; the plain deployment is in the Git history.
 - **The first cold starts after each deploy are slower** (about +40 s each) until Modal has
   created its snapshots.
-- **Code complexity:** a separate app file of about 180 lines, a class with three
-  lifecycle hooks, two extra vLLM flags, and a 90-line route guard with its own tests. The Triton cache is still used: it keeps
-  snapshot-creation runs from recompiling kernels.
-- **The endpoint URL changes.** The class endpoint has a different URL, so `.env`
-  `LLM_BASE_URL` must point at it.
+- **Code complexity:** a class with three lifecycle hooks, warmup requests, three extra
+  vLLM settings (sleep mode, dev mode, the guard), and a 90-line route guard with its own
+  tests. The Triton cache is still used: it keeps snapshot-creation runs from recompiling
+  kernels.
+- **The endpoint URL changes.** The class endpoint has a different URL from the old plain
+  function, so `.env` `LLM_BASE_URL` must point at it.
 
 ### Functional checks on the snapshot deployment
 
@@ -375,13 +397,82 @@ Checks on the guarded deployment, through the real backend where a feature invol
   noted above, that varies from request to request and was also seen on the plain
   deployment.
 
+### Validation with the token-limit settings (2026-11-18)
+
+This run checked that the final configuration works: the consolidated snapshot server in
+`modal_qwen.py`, deployed as `socratic-tutor-qwen`, with #48's settings
+(`--max-model-len auto`, no `max_new_tokens` cap, tool-call flags). It was an integration
+check, not a benchmark: it used 4 cold trials and the same prompt and tooling as above, but
+too few trials to compare timings. All earlier performance figures were measured with
+`--max-model-len 4096` and the 512-token cap. Results: `combined-1..4.json`, and the
+filtered vLLM log lines in `combined-vllm-memory.log`.
+
+| Trial | Mode | GPU | Container listed | TTFT |
+|---|---|---|---|---|
+| combined-1 | created | L40S | 7.5 s | 181.4 s |
+| combined-2 | restored (from combined-1's snapshot) | L40S | 1.6 s | 15.3 s |
+| combined-3 | created | L4 | 1.5 s | 271.0 s |
+| combined-4 | restored (from combined-1's snapshot) | L40S | 11.8 s | 22.1 s |
+
+Both restores passed every check in
+[How restores were verified](#how-restores-were-verified). The L4 created a snapshot but
+was not assigned again, so **an L4 restore with the final configuration was not
+validated**.
+
+**Context length and memory**, from vLLM's logs. No memory errors or tracebacks appeared:
+
+| | L40S | L4 |
+|---|---|---|
+| Context chosen by `--max-model-len auto` | 262,144 tokens (the model's full length) | 262,144 tokens |
+| Model weights on the GPU | 6.44 GiB | 6.44 GiB |
+| KV cache | 29.29 GiB, 946,949 tokens (3.61 full-length requests at once) | 10.31 GiB, 333,021 tokens (1.27×) |
+| Sleep | freed 35.87 GiB (0.58 GiB left), 1.8 s | freed 16.89 GiB (0.30 GiB left), 3.3 s |
+| Wake-up | 0.65 s at creation; 0.61 s and 1.19 s on the restores | 1.08 s at creation |
+
+The KV cache size still comes from `--gpu-memory-utilization 0.85`; `auto` only raised
+the per-request context limit. While awake after a restore (L40S), the GPU used
+37,402 of 46,068 MiB. The container's cgroup reported 17.1 GiB of host memory in use
+(`memory.usage_in_bytes`), and the vLLM engine process had 15.4 GB resident. That is above
+the function's `memory=16384` request, which Modal treats as a reservation rather than a
+limit. Host memory was not recorded with the earlier settings, so this run cannot say
+whether `auto` changed it. The resident figure may include CUDA host mappings.
+
+**Checks through the real backend and on the endpoint:**
+
+- **Long answer:** an essay request produced 2,897 output tokens in one model call and
+  finished with `stop` (no `length` or `abort`), ending on a complete sentence.
+- **Cancellation:** closing the backend stream at the first text stopped vLLM after
+  3 generated tokens, with nothing left running.
+- **Tool calling:** vLLM parsed `load_skill(name="worked-example")` with
+  `tool_choice="required"`. Two backend requests completed a `load_skill` round trip (an
+  explicit "load your worked-example skill" prompt, and the image request); other
+  worked-solution prompts were answered directly, as before.
+- **Images, PDF citations, streaming:** "Red"; the citation linked `[biology-notes.pdf,
+  p. 1]`; 58 text chunks.
+- **Authentication and route guard:** 401 without a proxy token or with an invalid one.
+  `/health` and `/v1/models` returned 200, and all 15 dev and non-tutor routes returned
+  404 with a valid proxy token. Inside the container, `/is_sleeping` returned 404 without
+  the internal token and 200 with it.
+
+Metrics for these checks were read inside the container. `modal container exec` cuts its
+output off at 8 KiB, so the scripts return only the counters they need. A first attempt
+that read the full `/metrics` page gave inconsistent counts and was discarded.
+
+**GPU time versus waiting.** Modal listed each container 1.5–11.8 s after the request
+(polled about every 3 s); before that, no GPU was allocated. From then until the container
+stopped, it held a GPU, including the 60 s idle window before scale-down. Estimated from
+trial start times, which have about ±10 s uncertainty each: combined-1 about 290 s,
+combined-2 about 130 s, combined-3 (L4) about 380 s, and combined-4 about 820 s. The last
+one ran all the backend checks until the app was stopped. In total, about 27 minutes of
+GPU time (about 21 on L40S and 6 on L4) over a 28.6-minute session. These are estimates,
+not Modal billing data.
+
 ### Decision
 
-The snapshot deployment, with the route guard, is kept as the proposed deployment. A
-restored cold start removes about 145 s on an L40S, and the code cost is limited to the
-snapshot file and the route guard. The plain deployment and its persistent Triton cache stay
-as the fallback and as the benchmark control; snapshot creation also relies on that cache.
-Use the plain deployment if GPU snapshots misbehave.
+The snapshot server, with the route guard, replaces the plain deployment: the team decided
+one deployment was enough. A restored cold start removes about 145 s on an L40S. The
+persistent Triton cache stays, because snapshot creation still runs the full startup. If
+GPU snapshots misbehave, the plain deployment can be restored from the Git history.
 
 ## Method
 
@@ -488,7 +579,7 @@ deployment virtual environment.
 ```powershell
 .\deployment\.venv\Scripts\python.exe -X utf8 -m modal deploy deployment/modal_qwen.py
 docker compose -f compose.yaml -f deployment/cold-start-benchmark.compose.yaml up -d --build backend
-.\deployment\.venv\Scripts\python.exe -X utf8 deployment/cold_start_benchmark.py run --label after --trials 3
+.\deployment\.venv\Scripts\python.exe -X utf8 deployment/cold_start_benchmark.py run --label snapshot --trials 5
 .\deployment\.venv\Scripts\python.exe -X utf8 deployment/cold_start_benchmark.py report docs/cold-start-results/*.json
 ```
 
@@ -506,16 +597,10 @@ weights are unaffected.
 .\deployment\.venv\Scripts\python.exe -X utf8 -m modal volume rm -r socratic-tutor-model-cache /triton-cache
 ```
 
-To measure the snapshot deployment, deploy it and pass its endpoint to the relay. The URL is
-printed by `modal.Cls.from_name("socratic-tutor-qwen-snapshot", "SnapshotServer")().serve.get_web_url()`
-and is not saved in the results. Each trial records whether it created or restored a
-snapshot. `--first-trial` continues the numbering across separate runs.
+Each trial records whether it created or restored a snapshot. The first few trials after a
+deploy create snapshots. `--first-trial` continues the numbering across separate runs, and
+`--upstream` measures a different endpoint than `.env` without saving its URL.
 
-```powershell
-.\deployment\.venv\Scripts\python.exe -X utf8 -m modal deploy deployment/modal_qwen_snapshot.py
-.\deployment\.venv\Scripts\python.exe -X utf8 deployment/cold_start_benchmark.py run --label snapshot --trials 5 --app socratic-tutor-qwen-snapshot --upstream https://YOUR-SNAPSHOT-ENDPOINT/v1
-```
-
-Afterwards, stop everything with `modal app stop socratic-tutor-qwen`,
-`modal app stop socratic-tutor-qwen-snapshot`, and `docker compose stop`. To use the tutor
-normally again, start the backend without the override file.
+Afterwards, stop everything with `modal app stop --yes socratic-tutor-qwen` and
+`docker compose stop`. To use the tutor normally again, start the backend without the
+override file.

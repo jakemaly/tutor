@@ -52,7 +52,8 @@ def test_preload_requires_a_yaml_boolean(tmp_path: Path, value: str) -> None:
     (folder / "SKILL.md").write_text(
         f"---\nname: broken\ndescription: Example.\npreload: {value}\n---\nInstructions."
     )
-    with pytest.raises(ValueError, match="Invalid skill.*broken/SKILL.md"):
+    # The path separator is "\" on Windows and "/" elsewhere.
+    with pytest.raises(ValueError, match=r"Invalid skill.*broken[\\/]SKILL\.md"):
         discover_skills(tmp_path)
 
 
@@ -60,7 +61,7 @@ def test_malformed_skill_identifies_the_file(tmp_path: Path) -> None:
     folder = tmp_path / "broken"
     folder.mkdir()
     (folder / "SKILL.md").write_text("Missing frontmatter")
-    with pytest.raises(ValueError, match="Invalid skill.*broken/SKILL.md"):
+    with pytest.raises(ValueError, match=r"Invalid skill.*broken[\\/]SKILL\.md"):
         discover_skills(tmp_path)
 
 
