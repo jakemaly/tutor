@@ -191,7 +191,8 @@ Nothing is downloaded, and nothing is read from the model files on the Volume.
 - **Modal 1.6.3** (installed client): `App.cls` accepts `enable_memory_snapshot` and
   `experimental_options`, `modal.enter` takes `snap=`, and `web_server` works on a class
   method. Modal labels GPU memory snapshots alpha. Snapshots exist only for deployed apps.
-  Modal keeps them per worker type and invalidates them on redeploy. Modal's own vLLM
+  Modal keeps them per worker type, and a redeploy with new code or configuration makes
+  them obsolete. Modal's own vLLM
   example uses the same pattern: `vllm serve` started with `subprocess.Popen` inside the
   `snap=True` hook, followed by sleep and wake-up.
 - **vLLM 0.32.0** (pinned): `--enable-sleep-mode` uses the cumem allocator on CUDA. Level 1
@@ -287,7 +288,9 @@ place: same container, `restored_from_other_container: false`.
   on OCI `eu-west` and two on AWS `us-east`, the second of those after a snapshot for the
   same provider and region already existed. Restores used both an OCI snapshot (on an OCI
   worker in `us-east`) and an AWS snapshot. Modal's guidance expects 2–3 snapshots per GPU
-  type. Any redeploy, image change, or code change starts over. L4 workers were not
+  type. A redeploy with new code or configuration, including an image change, needs new
+  snapshots. Every redeploy in these tests changed the code and was followed by new
+  snapshots; redeploying unchanged code was not tested. L4 workers were not
   assigned in this run; the [re-test](#re-test-with-the-route-guard-2026-11-18) later
   created and restored a separate L4 snapshot. With these medians, the average cold start
   beats the control as long as fewer than about 79% are creations:
@@ -309,8 +312,8 @@ place: same container, `restored_from_other_container: false`.
 - **GPU snapshots are alpha.** Modal says the driver-level checkpoint and restore are new.
   A restore failure was not observed, so the fallback behavior was not measured. There is
   no longer a separate plain app to switch to; the plain deployment is in the Git history.
-- **The first cold starts after each deploy are slower** (about +40 s each) until Modal has
-  created its snapshots.
+- **The first cold starts after a deploy with new code or configuration are slower**
+  (about +40 s each) until Modal has created new snapshots.
 - **Code complexity:** a class with three lifecycle hooks, warmup requests, three extra
   vLLM settings (sleep mode, dev mode, the guard), and a 90-line route guard with its own
   tests. The Triton cache is still used: it keeps snapshot-creation runs from recompiling
@@ -350,8 +353,8 @@ did not cause it.
 
 ### Re-test with the route guard (2026-11-18)
 
-After the route guard was added, the snapshot app was redeployed, which discarded the old
-snapshots. Six more cold starts were measured with the same method, prompt, and settings
+After the route guard was added, the snapshot app was redeployed with the new code, so the
+old snapshots no longer applied and Modal created new ones. Six more cold starts were measured with the same method, prompt, and settings
 (`snapshot-guard-*.json`). This time Modal assigned an L4 twice:
 
 | Trial | Mode | GPU | Container listed | TTFT | Notes |

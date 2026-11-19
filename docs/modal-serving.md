@@ -70,7 +70,7 @@ LLM_API_KEY=YOUR_PROXY_TOKEN_ID.YOUR_PROXY_TOKEN_SECRET
 
 
 
-Start Docker Desktop, then run `docker compose up -d --build`. Open http://localhost:5173 and send a question. After the GPU scales to zero, the first request usually answers in about 6–20 seconds on an L40S, or about 30 seconds on an L4. The first few cold starts after each deploy take about 3 minutes on an L40S, or up to about 6.5 minutes on an L4, while vLLM loads the model and Modal creates its snapshots. Any cold start can wait longer when Modal has no free GPU. Send a follow-up while the GPU is warm to check that the answer appears in chunks.
+Start Docker Desktop, then run `docker compose up -d --build`. Open http://localhost:5173 and send a question. After the GPU scales to zero, the first request usually answers in about 6–20 seconds on an L40S, or about 30 seconds on an L4. After a deploy that changes the code or configuration, the first few cold starts take about 3 minutes on an L40S, or up to about 6.5 minutes on an L4, while vLLM loads the model and Modal creates new snapshots. Any cold start can wait longer when Modal has no free GPU. Send a follow-up while the GPU is warm to check that the answer appears in chunks.
 
 
 
@@ -108,7 +108,7 @@ Weights and tokenizer files load from the `socratic-tutor-model-cache` Volume; n
 
 
 
-The server starts vLLM, warms it up, and puts it to sleep before Modal saves a GPU memory snapshot of the container. Later cold starts restore that snapshot and only copy the weights back to the GPU. Modal keeps separate snapshots per GPU worker type (L4 and L40S) and discards them on every deploy, so the first few cold starts after a deploy take the full startup path plus about 8 s to create a snapshot. GPU memory snapshots are an alpha Modal feature. vLLM's sleep and wake routes need `VLLM_SERVER_DEV_MODE=1`, which also adds vLLM's other administrative routes. A route guard ([deployment/vllm_route_guard.py](../deployment/vllm_route_guard.py)) runs inside vLLM, so proxy-token holders can reach only `POST /v1/chat/completions`, `GET /v1/models`, and `GET /health`. Every other route, including `/metrics`, `/sleep`, and `/wake_up`, answers 404 unless the request carries a token that the container generates at startup and uses only for its own sleep and wake calls.
+The server starts vLLM, warms it up, and puts it to sleep before Modal saves a GPU memory snapshot of the container. Later cold starts restore that snapshot and only copy the weights back to the GPU. Redeploying with new code or configuration makes the previous snapshots obsolete, and Modal may create several compatible snapshots per GPU type (L4 and L40S). The first few cold starts after such a deploy therefore take the full startup path plus about 8 s to create a snapshot. In our tests every redeploy changed the code and was followed by new snapshots; redeploying unchanged code was not tested. GPU memory snapshots are an alpha Modal feature. vLLM's sleep and wake routes need `VLLM_SERVER_DEV_MODE=1`, which also adds vLLM's other administrative routes. A route guard ([deployment/vllm_route_guard.py](../deployment/vllm_route_guard.py)) runs inside vLLM, so proxy-token holders can reach only `POST /v1/chat/completions`, `GET /v1/models`, and `GET /health`. Every other route, including `/metrics`, `/sleep`, and `/wake_up`, answers 404 unless the request carries a token that the container generates at startup and uses only for its own sleep and wake calls.
 
 
 

@@ -14,8 +14,9 @@ see docs/cold-start-benchmark.md for the measurements.
   and health routes. The rest, including sleep and wake, need a token that this container
   generates and keeps to itself.
 
-Modal creates a few snapshots per GPU worker type after each deploy; those cold starts take the
-full startup path plus about 8 s for warmup, sleep, and capture.
+A redeploy with new code or configuration needs new snapshots, and Modal may create several
+per GPU type. Those cold starts take the full startup path plus about 8 s for warmup, sleep,
+and capture.
 """
 
 import os
