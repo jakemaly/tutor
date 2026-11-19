@@ -246,6 +246,7 @@ def start_server(
     *,
     hf_home: str | None = None,
     extra_args: list[str] | None = None,
+    served_name: str | None = None,  # the model name clients ask for (default: `name`)
     timeout: float = 1800,
 ) -> VLLMServer:
     """Start `vllm serve` for a config section (model, revision, port, memory) and wait for it."""
@@ -253,13 +254,14 @@ def start_server(
     log_dir.mkdir(parents=True, exist_ok=True)
     log_path = log_dir / f"vllm-{name}.log"
     base_url = f"http://127.0.0.1:{port}/v1"
-    if served_models(base_url) == [name]:  # e.g. a notebook cell that was re-run
-        return VLLMServer(name, None, base_url, name, log_path)
+    served_name = served_name or name
+    if served_models(base_url) == [served_name]:  # e.g. a notebook cell that was re-run
+        return VLLMServer(name, None, base_url, served_name, log_path)
     check_free_memory(name, float(section["gpu_memory_utilization"]))
     cmd = [
         str(vllm_bin), "serve", section["model"],
         "--revision", section["revision"],
-        "--served-model-name", name,
+        "--served-model-name", served_name,
         "--host", "127.0.0.1",
         "--port", str(port),
         "--gpu-memory-utilization", str(section["gpu_memory_utilization"]),
@@ -276,7 +278,7 @@ def start_server(
     process = subprocess.Popen(
         cmd, stdout=log, stderr=subprocess.STDOUT, env=env, start_new_session=True
     )
-    server = VLLMServer(name, process, base_url, name, log_path)
+    server = VLLMServer(name, process, base_url, served_name, log_path)
     try:
         wait_until_ready(server, timeout)
     except BaseException:
@@ -340,3 +342,47 @@ def start_student_and_judge(cfg, vllm_bin: Path, log_dir: Path) -> list[VLLMServ
             s.stop()
         raise
     return servers
+
+
+TUTOR_BASE_NAME = "socratic-tutor-base"  # same names as deployment/modal_qwen_trained.py
+TUTOR_TRAINED_NAME = "socratic-tutor-trained"
+
+
+def start_tutor_server(cfg, vllm_bin: Path, adapter_dir: Path, log_dir: Path, port: int = 8103):
+    """Serve the tutor through vLLM: the base model, plus the trained LoRA adapter as a second name.
+
+    Takes the tutor's share of the GPU budget (`gpu_budget.plan`), so the tutor must not also be
+    loaded in the notebook. The adapter is first renamed to the layout vLLM expects
+    (`export.adapter_for_vllm`).
+    """
+    from tutor_rl.export import adapter_for_vllm
+    from tutor_rl.gpu_budget import plan
+
+    base_url = f"http://127.0.0.1:{port}/v1"
+    if set(served_models(base_url) or []) == {TUTOR_BASE_NAME, TUTOR_TRAINED_NAME}:
+        return VLLMServer("tutor", None, base_url, TUTOR_BASE_NAME, log_dir / "vllm-tutor.log")
+    served_adapter = adapter_for_vllm(adapter_dir, Path(log_dir).parent / "adapter-vllm")
+    section = {
+        "model": cfg.tutor["model"],
+        "revision": cfg.tutor["revision"],
+        "port": port,
+        "gpu_memory_utilization": plan(cfg).tutor,
+        "max_model_len": 8192,
+        "max_num_seqs": 32,
+    }
+    server = start_server(
+        vllm_bin, "tutor", section, log_dir,
+        served_name=TUTOR_BASE_NAME,
+        extra_args=[
+            "--enable-lora",
+            "--lora-modules", f"{TUTOR_TRAINED_NAME}={served_adapter}",
+            "--max-lora-rank", str(cfg.tutor.get("lora_rank", 32)),
+            "--max-loras", "1",
+            "--limit-mm-per-prompt", json.dumps({"image": 0, "video": 0}),  # text only
+        ],
+    )  # fmt: skip
+    models = set(served_models(base_url) or [])
+    if models != {TUTOR_BASE_NAME, TUTOR_TRAINED_NAME}:
+        server.stop()
+        raise RuntimeError(f"tutor server lists {sorted(models)}:\n{server.log_tail()}")
+    return server

@@ -83,3 +83,20 @@ def test_latest_hub_checkpoint_needs_optimizer_state() -> None:
     assert hub.latest_hub_checkpoint("socratictutor/run") == ("checkpoints/step-00010", 10)
     FakeApi.files = []
     assert hub.latest_hub_checkpoint("socratictutor/run") is None
+
+
+def test_adapter_is_renamed_to_the_full_model_layout_for_vllm(tmp_path) -> None:
+    torch = pytest.importorskip("torch")
+    from safetensors.torch import load_file, save_file
+
+    from tutor_rl.export import adapter_for_vllm
+
+    src = tmp_path / "adapter"
+    src.mkdir()
+    key = "base_model.model.model.layers.0.linear_attn.in_proj_qkv.lora_A.weight"
+    save_file({key: torch.ones(2, 2)}, str(src / "adapter_model.safetensors"))
+    (src / "adapter_config.json").write_text('{"r": 2}')
+    out = adapter_for_vllm(src, tmp_path / "served")
+    weights = load_file(str(out / "adapter_model.safetensors"))
+    assert list(weights) == [key.replace("model.layers.", "model.language_model.layers.")]
+    assert (out / "adapter_config.json").read_text() == '{"r": 2}'

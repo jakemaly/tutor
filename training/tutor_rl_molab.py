@@ -607,6 +607,29 @@ def _(mo):
 
 
 @app.function
+def find_trained_adapter(run_dir, hub_repo_id):
+    """`final/adapter`, downloaded from the Hub if this session did not train; the newest
+    checkpoint if the final upload never finished."""
+    _adapter = run_dir / "final" / "adapter"
+    if not _adapter.exists() and hub_repo_id:  # trained in an earlier session
+        from huggingface_hub import snapshot_download
+
+        from tutor_rl.hub import latest_hub_checkpoint
+
+        _token = os.environ.get("HF_TOKEN")
+        snapshot_download(hub_repo_id, local_dir=str(run_dir), allow_patterns=["final/**"], token=_token)
+        if not _adapter.exists():  # the session ended before the final upload: newest checkpoint
+            _ckpt = latest_hub_checkpoint(hub_repo_id, _token)
+            if _ckpt is not None:
+                snapshot_download(
+                    hub_repo_id, local_dir=str(run_dir), allow_patterns=[f"{_ckpt[0]}/adapter/**"], token=_token
+                )
+                _adapter = run_dir / _ckpt[0] / "adapter"
+    assert _adapter.exists(), f"No trained adapter in {run_dir} or on the Hub ({hub_repo_id}); train first."
+    return _adapter
+
+
+@app.function
 def plot_comparison(report):
     """Grouped bars: answer leaked and student solved, untrained vs. trained."""
     import matplotlib.pyplot as plt
@@ -653,22 +676,7 @@ def _(
     from tutor_rl.evaluation import evaluate
     from tutor_rl.policy import load_adapter_weights
 
-    _adapter = run_dir / "final" / "adapter"
-    if not _adapter.exists() and hub is not None:  # trained in an earlier session
-        from huggingface_hub import snapshot_download
-
-        from tutor_rl.hub import latest_hub_checkpoint
-
-        _token = os.environ.get("HF_TOKEN")
-        snapshot_download(hub_repo_id, local_dir=str(run_dir), allow_patterns=["final/**"], token=_token)
-        if not _adapter.exists():  # the session ended before the final upload: newest checkpoint
-            _ckpt = latest_hub_checkpoint(hub_repo_id, _token)
-            if _ckpt is not None:
-                snapshot_download(
-                    hub_repo_id, local_dir=str(run_dir), allow_patterns=[f"{_ckpt[0]}/adapter/**"], token=_token
-                )
-                _adapter = run_dir / _ckpt[0] / "adapter"
-    assert _adapter.exists(), f"No trained adapter in {run_dir} or on the Hub ({hub_repo_id}); train first."
+    _adapter = find_trained_adapter(run_dir, hub_repo_id if hub is not None else None)
     load_adapter_weights(tutor, _adapter)
     mo.output.append(mo.md(f"Trained tutor: `{_adapter.relative_to(run_dir)}`"))
 
@@ -695,34 +703,38 @@ def _(mo):
     mo.md(r"""
     ## 6. Served: base vs. trained (week 2)
 
-    The same comparison, but the tutor runs behind the OpenAI-compatible vLLM endpoint from `deployment/modal_qwen_trained.py`: one server, `socratic-tutor-base` and `socratic-tutor-trained` (the base model with the trained adapter). Deploy it first (docs/modal-serving.md). Only the student and judge servers are needed here (section 2); skip sections 3 to 5. The app's own endpoint is not touched.
+    The same comparison, but the tutor runs behind an OpenAI-compatible vLLM server, the way the app serves its model. One server on this GPU offers two names: `socratic-tutor-base` (Qwen3.5-9B) and `socratic-tutor-trained` (the same model with the trained adapter from the Hub). The server takes the GPU share the tutor would use, so in a fresh session run sections 1 and 2 and **skip 3 to 5**. The app's own model settings are not touched.
     """)
     return
 
 
 @app.cell
 def _(mo):
-    served_url = mo.ui.text(label="Endpoint URL (ends in /v1)", full_width=True)
-    served_key = mo.ui.text(label="Modal proxy token (ID.SECRET)", kind="password", full_width=True)
-    served_button = mo.ui.run_button(label="Evaluate served base vs. trained")
-    mo.vstack([served_url, served_key, served_button])
-    return served_button, served_key, served_url
+    served_button = mo.ui.run_button(label="Start the tutor server and evaluate base vs. trained")
+    served_button
+    return (served_button,)
 
 
 @app.cell
-def _(cfg, eval_problems, hub, mo, run_dir, served_button, served_key, served_url, servers):
-    mo.stop(not served_button.value, mo.md("*Fill in the endpoint, then click to evaluate.*"))
+def _(cfg, eval_problems, hub, hub_repo_id, mo, run_dir, served_button, servers, work_root):
+    mo.stop(not served_button.value, mo.md("*Click to serve and evaluate.*"))
     assert servers, "start the student and judge first (section 2)"
     from tutor_rl.evaluation import evaluate as _evaluate
     from tutor_rl.openai_chat import model_from_section as _from_section
     from tutor_rl.openai_chat import served_tutor
+    from tutor_rl.vllm_server import TUTOR_BASE_NAME, TUTOR_TRAINED_NAME, start_tutor_server
+    from tutor_rl.vllm_server import ensure_vllm_env as _ensure_vllm_env
 
-    _url = served_url.value.strip().rstrip("/")
+    _adapter = find_trained_adapter(run_dir, hub_repo_id if hub is not None else None)
+    with mo.status.spinner(title="Starting the tutor server (downloads Qwen3.5-9B on first run)…"):
+        tutor_server = start_tutor_server(
+            cfg, _ensure_vllm_env(Path(work_root.value) / "vllm-env"), _adapter, run_dir / "logs"
+        )
     _tutors = {
-        _name: served_tutor(cfg.tutor, _url, f"socratic-tutor-{_name}", served_key.value.strip() or "EMPTY")
-        for _name in ("base", "trained")
+        "base": served_tutor(cfg.tutor, tutor_server.base_url, TUTOR_BASE_NAME),
+        "trained": served_tutor(cfg.tutor, tutor_server.base_url, TUTOR_TRAINED_NAME),
     }
-    with mo.status.spinner(title="Evaluating the served tutors (the first request waits for a Modal GPU)…"):
+    with mo.status.spinner(title="Evaluating both served tutors on the same scenarios…"):
         served_report = _evaluate(
             cfg, _tutors, eval_problems, _from_section(cfg.student), _from_section(cfg.judge),
             run_dir / "eval-served",
@@ -731,6 +743,7 @@ def _(cfg, eval_problems, hub, mo, run_dir, served_button, served_key, served_ur
     if hub is not None:
         hub.upload_run(run_dir, include=["eval-served/**"], message="Served evaluation").result()
     mo.vstack([
+        mo.md(f"Trained adapter: `{_adapter.relative_to(run_dir)}`, served at {tutor_server.base_url}"),
         plot_comparison(served_report),
         mo.md((run_dir / "eval-served" / "results.md").read_text(encoding="utf-8")),
     ])

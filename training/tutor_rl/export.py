@@ -94,6 +94,29 @@ def save_merged(adapter_dir: Path, tutor_cfg: dict, out_dir: Path, device: str =
     return Path(out_dir)
 
 
+def adapter_for_vllm(adapter_dir: Path, out_dir: Path) -> Path:
+    """Copy a saved adapter with its weights renamed to the layout vLLM expects.
+
+    Training loads Qwen3.5 text-only (`model.layers.*`), but vLLM serves the full checkpoint,
+    whose language model sits under `model.language_model.layers.*`. Without the rename vLLM
+    would not match the adapter to any layer and would quietly serve the base model.
+    (deployment/modal_qwen_trained.py has a copy of this for the Modal container.)
+    """
+    import shutil
+
+    from safetensors.torch import load_file, save_file
+
+    adapter_dir, out_dir = Path(adapter_dir), Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    weights = load_file(str(adapter_dir / "adapter_model.safetensors"))
+    old, new = "base_model.model.model.layers.", "base_model.model.model.language_model.layers."
+    renamed = {(new + k[len(old):] if k.startswith(old) else k): v for k, v in weights.items()}
+    assert any(k.startswith(new) for k in renamed), "no LoRA weights for the language model"
+    save_file(renamed, str(out_dir / "adapter_model.safetensors"))
+    shutil.copy(adapter_dir / "adapter_config.json", out_dir / "adapter_config.json")
+    return out_dir
+
+
 HUB_IGNORE = ["*.pt", "*.log", "merged/**", "logs/**"]
 
 

@@ -94,7 +94,7 @@ Verified the authenticated model endpoint, streamed a response directly from vLL
 
 
 
-`deployment/modal_qwen_trained.py` serves the RL-trained checkpoint for comparison. It is a separate Modal app (`socratic-tutor-qwen-trained`), so the deployment above and the app's `LLM_BASE_URL` stay as they are. One vLLM server on an L40S offers two model names:
+`deployment/modal_qwen_trained.py` serves the RL-trained checkpoint on Modal, for trying it in the app. This is optional: the week 2 comparison runs in molab without Modal. It is a separate Modal app (`socratic-tutor-qwen-trained`), so the deployment above and the app's `LLM_BASE_URL` stay as they are. One vLLM server on an L40S offers two model names:
 
 
 
@@ -131,16 +131,7 @@ To try the trained tutor in the app locally, set `LLM_MODEL=socratic-tutor-train
 
 
 
-The comparison needs the student and judge models on a GPU, so run it in the molab notebook (`training/tutor_rl_molab.py`):
-
-
-
-1. Start the student and judge (section 2).
-2. In section 6, paste the endpoint URL ending in `/v1` and the proxy token, then click *Evaluate served base vs. trained*.
-
-
-
-Both tutors get the same 100 held-out problems, openers, seeds, student and judge as in training's evaluation. The tutor's prompt is built with the same chat template as in training and sent to `/v1/completions`, with the same sampling settings. The bar chart, `results.md` and every dialogue go to `eval-served/` in the run repo. From a terminal with the student and judge running, `training/evaluate.py --policy base=TUTOR_BASE --policy trained=TUTOR_TRAINED` does the same, reading `TUTOR_BASE_BASE_URL`, `TUTOR_BASE_MODEL`, `TUTOR_BASE_API_KEY` and the matching `TUTOR_TRAINED_*` variables.
+The comparison itself runs in the molab notebook (`training/tutor_rl_molab.py`, section 6), which serves the same two names with vLLM on molab's GPU, so it needs no Modal account. To compare against this Modal endpoint instead, run `training/evaluate.py --policy base=TUTOR_BASE --policy trained=TUTOR_TRAINED` with the student and judge running, and set `TUTOR_BASE_BASE_URL`, `TUTOR_BASE_MODEL=socratic-tutor-base`, `TUTOR_BASE_API_KEY` and the matching `TUTOR_TRAINED_*` variables.
 
 
 

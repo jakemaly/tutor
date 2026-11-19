@@ -13,7 +13,7 @@ Setup (Hugging Face org and token, molab GPU, what goes where) is in [WORKFLOW.m
 1. Open [`tutor_rl_molab.py`](tutor_rl_molab.py) in molab with the GPU on and paste a Hugging Face token.
 2. Start the servers and check the sanity dialogue.
 3. Train, then evaluate untrained vs. trained.
-4. Week 2: serve the checkpoint with [`deployment/modal_qwen_trained.py`](../deployment/modal_qwen_trained.py) and compare base vs. trained through the endpoint (notebook section 6, [docs/modal-serving.md](../docs/modal-serving.md#serve-the-trained-tutor-issue-46)).
+4. Week 2, in a fresh session: run sections 1 and 2, skip 3 to 5, and click section 6. It serves the base model and the trained adapter with vLLM on the molab GPU (the same OpenAI-compatible server the app uses) and compares them on the same scenarios. To serve it on Modal for the app instead, see [docs/modal-serving.md](../docs/modal-serving.md#serve-the-trained-tutor-issue-46).
 
 Run the `smoke` config once before `molab`. Checkpoints, metrics, chat logs and results upload to a private repo in the `socratictutor` org as they are saved, and a new session resumes from the Hub.
 
@@ -33,7 +33,7 @@ Run the `smoke` config once before `molab`. Checkpoints, metrics, chat logs and 
 | `tutor_rl/policy.py` | Qwen3.5 tutor with LoRA as a batched `ChatModel`; records sampled tokens |
 | `tutor_rl/grpo.py` | Multi-turn GRPO loss, training loop, `train.log`, checkpoints, resume |
 | `tutor_rl/evaluation.py` | Untrained vs. trained: answer-leak rate and student solve rate |
-| `tutor_rl/vllm_server.py` | Installs vLLM in its own venv and serves the student and judge locally |
+| `tutor_rl/vllm_server.py` | Installs vLLM in its own venv and serves the student, the judge and (week 2) the tutor locally |
 | `tutor_rl/gpu_budget.py` | Keeps everything on the GPU under 80% of its memory |
 | `tutor_rl/hub.py`, `tutor_rl/export.py` | Hub uploads and resume; provenance and zip |
 | `tutor_rl/openai_chat.py` | Endpoint clients: the student and judge (chat), and the served tutor (`ServedTutor`, same prompt as training) |
