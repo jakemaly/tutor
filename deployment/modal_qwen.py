@@ -276,7 +276,10 @@ def _emit(event: str, **fields) -> None:
     ),
     gpu=["L4", "L40S"],
     cpu=2,
-    memory=16384,
+    # A reservation (guaranteed RAM), not a limit. An awake restored L40S container used about
+    # 17.1 GiB, above the earlier 16 GiB. Peaks during startup, sleep, and restore were not
+    # measured. Modal bills the higher of this reservation and actual usage.
+    memory=20480,
     volumes={"/cache": model_cache},
     min_containers=0,
     max_containers=1,

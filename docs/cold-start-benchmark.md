@@ -443,6 +443,37 @@ the function's `memory=16384` request, which Modal treats as a reservation rathe
 limit. Host memory was not recorded with the earlier settings, so this run cannot say
 whether `auto` changed it. The resident figure may include CUDA host mappings.
 
+What this sample does and does not show:
+
+- **It is a single point**, taken once on an awake, idle, restored L40S container. No peak
+  was recorded during startup, sleep, snapshot capture, or restore:
+  `memory.max_usage_in_bytes` and `memory.peak` were not available.
+- **It is the container cgroup's total.** Under cgroup v1, `memory.usage_in_bytes`
+  normally includes page cache, but `memory.stat` was not captured, so reclaimable file
+  cache cannot be separated from process memory. The sandbox's `/proc/meminfo` shows the
+  host (335 GiB), so the kernel semantics here are uncertain.
+- **Process figures overlap.** The engine (15,408 MiB) plus the API server (2,381 MiB)
+  exceed the cgroup total, so they double-count shared or file-mapped pages.
+- **A higher peak is plausible.** Level-1 sleep copies the 6.44 GiB of weights from the GPU
+  into host memory, and the snapshot is taken at that point. Whether the awake sample still
+  includes that buffer is unknown.
+
+**Reservation change after this validation.** The reservation was raised to
+`memory=20480` (20 GiB). That leaves about 2.9 GiB (about 17%) above the one sample.
+It may not cover the unmeasured peaks.
+
+- **What a reservation does.** It guarantees memory but is not a limit, so usage above it
+  is still allowed when the worker has room. No `(request, limit)` hard limit was added,
+  and `--gpu-memory-utilization` is unchanged.
+- **Billing.** Modal bills memory on whichever is higher, the reservation or actual usage,
+  at $0.00000222 per GiB per second (about $0.008 per GiB-hour). At the observed 17.1 GiB,
+  the billed memory rises by about 2.9 GiB, about $0.023 per container-hour. When usage
+  exceeds 20 GiB, billing follows usage as before.
+- **It does not change consumption.** The container uses the same memory as before; the
+  reservation only changes the guarantee and the minimum billed.
+- **Not yet run on Modal.** Every run in this document, including this validation, used
+  `memory=16384`.
+
 **Checks through the real backend and on the endpoint:**
 
 - **Long answer:** an essay request produced 2,897 output tokens in one model call and

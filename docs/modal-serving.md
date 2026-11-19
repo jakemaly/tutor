@@ -112,6 +112,48 @@ The server starts vLLM, warms it up, and puts it to sleep before Modal saves a G
 
 
 
+### Prepare snapshots after deploying
+
+
+
+New snapshots after a deploy with new code or configuration are expected. The first request after such a deploy runs the full startup and creates a snapshot: about 3 minutes on an L40S, longer on an L4. To get this done before people start testing, send one authenticated request right after deploying. Use your `LLM_API_KEY` value and the endpoint URL from `LLM_BASE_URL`:
+
+
+
+```powershell
+
+$key = "YOUR_PROXY_TOKEN_ID.YOUR_PROXY_TOKEN_SECRET"
+
+curl.exe -sS -L --max-time 900 -H "Authorization: Bearer $key" https://YOUR-MODAL-ENDPOINT/v1/models
+
+```
+
+
+
+It returns the model list (`socratic-tutor`) once the server is ready. Modal redirects requests that wait longer than 150 seconds, and `-L` follows the redirect. Sending one message in the tutor has the same effect.
+
+
+
+To confirm that the snapshot was created, check the app logs:
+
+
+
+```powershell
+
+.\deployment\.venv\Scripts\python.exe -m modal app logs socratic-tutor-qwen --since 15m --tail 2000 | Select-String -SimpleMatch 'Creating GPU memory snapshot', '"event": "sleeping"', '"event": "awake"'
+
+```
+
+
+
+`Creating GPU memory snapshot for Function.` followed by the `sleeping` and `awake` events means the snapshot was saved and the server woke up. After the container scales down (60 seconds idle), later cold starts on the same kind of worker log `Restoring Function from memory snapshot.` instead.
+
+
+
+This prepares only the worker that served the request: one GPU type (L40S or L4) from one cloud provider. Modal keeps separate snapshots per GPU type and may create more for other workers, so a later cold start on a different worker can still take the full startup. The request costs one full startup of GPU time plus the 60-second idle window. `min_containers` stays at 0 and the scale-down window is unchanged, so the container then shuts down as usual.
+
+
+
 Each container logs `[cold-start]` timing events. See [Modal cold-start benchmark](cold-start-benchmark.md) for the stage breakdown, the measured results, and how to repeat the measurement. The snapshot-restored server was checked through the tutor backend for streaming, PDF citations, image input, cancellation, tool-call parsing, and proxy authentication.
 
 
