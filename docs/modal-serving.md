@@ -42,7 +42,7 @@ Set a $30 workspace usage limit in Modal before deploying. Then deploy the serve
 
 
 
-Create a proxy token in the Modal dashboard. Print the server's endpoint URL with:
+Create a proxy token in the Modal dashboard. The endpoint URL is `https://<workspace>--socratic-tutor-qwen-serve.<region>.modal.run`, the same as before the snapshot server replaced the plain function, so an existing `LLM_BASE_URL` keeps working. To print it:
 
 
 

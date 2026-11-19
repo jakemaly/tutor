@@ -318,8 +318,11 @@ place: same container, `restored_from_other_container: false`.
   vLLM settings (sleep mode, dev mode, the guard), and a 90-line route guard with its own
   tests. The Triton cache is still used: it keeps snapshot-creation runs from recompiling
   kernels.
-- **The endpoint URL changes.** The class endpoint has a different URL from the old plain
-  function, so `.env` `LLM_BASE_URL` must point at it.
+- **The endpoint URL is unchanged.** The snapshot server's `serve` method sets
+  `label="socratic-tutor-qwen-serve"`, the label the old plain function had, so Modal keeps
+  serving it at `https://<workspace>--socratic-tutor-qwen-serve.<region>.modal.run` and
+  existing `LLM_BASE_URL` settings keep working. During the experiment, the separate
+  snapshot app and the first consolidated deploy used other URLs.
 
 ### Functional checks on the snapshot deployment
 
@@ -460,6 +463,18 @@ whether `auto` changed it. The resident figure may include CUDA host mappings.
 Metrics for these checks were read inside the container. `modal container exec` cuts its
 output off at 8 KiB, so the scripts return only the counters they need. A first attempt
 that read the full `/metrics` page gave inconsistent counts and was discarded.
+
+**Endpoint URL.** This validation used the class's default URL. Afterwards, the `serve`
+method got the explicit label `socratic-tutor-qwen-serve`. A redeploy confirmed that Modal
+reports exactly the original plain-function URL (same workspace, environment, and region).
+At that URL:
+
+- A backend chat with the unchanged `.env` worked on a cold start that created a snapshot.
+- Authenticated model discovery and a streamed chat (`finish_reason` `stop`) worked.
+- Missing and invalid proxy tokens got 401.
+- The same 15 non-tutor routes returned 404 with a valid token.
+- The internal token still reached `/is_sleeping`.
+- Cancellation stopped vLLM after 3 tokens.
 
 **GPU time versus waiting.** Modal listed each container 1.5–11.8 s after the request
 (polled about every 3 s); before that, no GPU was allocated. From then until the container

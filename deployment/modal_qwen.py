@@ -371,7 +371,14 @@ class SnapshotServer:
             daemon=True,
         ).start()
 
-    @modal.web_server(port=8000, startup_timeout=900, requires_proxy_auth=True)
+    # The explicit label keeps the endpoint URL of the earlier `serve` function
+    # (<workspace>--socratic-tutor-qwen-serve), so existing LLM_BASE_URL settings keep working.
+    @modal.web_server(
+        port=8000,
+        startup_timeout=900,
+        requires_proxy_auth=True,
+        label="socratic-tutor-qwen-serve",
+    )
     def serve(self) -> None:
         """vLLM is already listening on port 8000."""
 
