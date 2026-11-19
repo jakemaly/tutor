@@ -57,7 +57,8 @@ def adapter_for_vllm(src: str, dst: str) -> str:
 
 @app.function(
     image=image,
-    gpu="L40S",  # 48 GB: bf16 weights (~19 GB) plus room for many dialogues at once
+    # bf16 weights take ~17 GB. Fallbacks when no L40S is free (Modal tries them in order).
+    gpu=["L40S", "A100-40GB", "L4"],
     cpu=4,
     memory=32768,
     volumes={"/cache": model_cache},
@@ -104,6 +105,9 @@ def serve():
         "--limit-mm-per-prompt", json.dumps({"image": 0, "video": 0}),  # text only
         "--generation-config", "vllm",  # no sampling defaults from the model's files
         "--reasoning-parser", "qwen3",
+        # The app lets the model call tools (tutor skills); Qwen3.5 writes them as <tool_call> XML.
+        "--enable-auto-tool-choice",
+        "--tool-call-parser", "qwen3_coder",
         "--default-chat-template-kwargs", '{"enable_thinking": false}',
         "--enforce-eager",
     ]
