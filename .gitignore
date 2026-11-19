@@ -17,6 +17,10 @@ htmlcov/
 node_modules/
 frontend/dist/
 
+# Training runs: checkpoints, adapters, and prepared data stay out of git
+training/outputs/
+outputs/
+
 # Build output
 build/
 dist/

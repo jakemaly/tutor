@@ -1,0 +1,103 @@
+# PedagogicalRL-style run (aclanthology.org/2025.emnlp-main.15) sized for one molab GPU
+# (RTX PRO 6000, 96 GB) in a 12-hour session: the paper's problems, prompts and reward, with a
+# smaller batch (24 dialogues per step) and shorter run. Everything on the GPU stays under 80%.
+
+run_name = "tutor-rl-qwen35-9b-bigmath"
+seed = 3407
+
+[tutor]
+# The Qwen3.5-9B checkpoint the app serves (deployment/modal_qwen.py), thinking off, bf16 LoRA.
+model = "Qwen/Qwen3.5-9B"
+revision = "c202236235762e1c871ad0ccb60c8ee5ba337b9a"
+enable_thinking = false
+lora_rank = 32
+lora_alpha = 32
+lora_dropout = 0.0         # keep 0 so training log-probs match the sampling distribution
+target_modules = [
+    "q_proj", "k_proj", "v_proj", "o_proj",      # full-attention layers
+    "in_proj_qkv", "in_proj_z", "out_proj",      # Gated DeltaNet (linear-attention) layers
+    "gate_proj", "up_proj", "down_proj",         # MLPs
+]
+temperature = 1.0
+top_p = 1.0
+max_tokens_per_turn = 256
+generation_batch_size = 24  # tutor turns generated together
+max_prefill_tokens = 24576  # cap on batch size x longest prompt, so long dialogues use smaller batches
+
+[student]
+# Simulated student, as in the paper (FP8). Gated on Hugging Face: accept the licence.
+model = "meta-llama/Llama-3.1-8B-Instruct"
+revision = "0e9e39f249a16976918f6564b8830bc894c89659"
+env_prefix = "TRAIN_STUDENT"  # TRAIN_STUDENT_BASE_URL / _MODEL / _API_KEY for an external endpoint
+vllm_args = ["--quantization", "fp8", "--enable-prefix-caching"]
+temperature = 0.6
+max_tokens_per_turn = 256  # chat turns
+max_tokens_final = 1024    # step-by-step solutions before and after the dialogue
+port = 8101
+gpu_memory_utilization = 0.15
+max_model_len = 8192
+max_num_seqs = 64
+
+[judge]
+# Leak and helpfulness judge, as in the paper (Qwen2.5-14B-Instruct, 4-bit AWQ).
+model = "Qwen/Qwen2.5-14B-Instruct-AWQ"
+revision = "539535859b135b0244c91f3e59816150c8056698"
+env_prefix = "TRAIN_JUDGE"
+vllm_args = ["--enable-prefix-caching"]
+temperature = 0.7
+max_tokens = 512
+port = 8102
+gpu_memory_utilization = 0.15
+max_model_len = 8192
+max_num_seqs = 64
+share_student = false      # true: the student's server also judges (saves 15%)
+
+[gpu]
+# student 15% + judge 15% + tutor 50% (a hard PyTorch cap) = 80% of GPU memory; 20% stays free.
+max_fraction = 0.80
+min_tutor_fraction = 0.24
+
+[episode]
+max_turns = 8              # total tutor + student messages
+student_final_attempts = 4 # the student's solutions after the dialogue (solve rate)
+initiator = "random"       # who opens: student or tutor, picked per problem
+
+[reward]
+# Hard penalty: a dialogue either judge rejects gets -lam; otherwise
+# reward = student solve rate + 0.1 if the tutor ended it - 0.5 if a tutor turn was cut off.
+lam = 1.0
+hard = true
+judges = ["leakage", "helpfulness"]
+samples_per_judge = 2
+template = true
+end_bonus = 0.1
+length_penalty = 0.5
+
+[train]
+problems_per_step = 6
+episodes_per_problem = 4   # GRPO group: 6 x 4 = 24 dialogues per step
+num_iterations = 1         # one update per batch (on-policy)
+max_steps = 60
+learning_rate = 1e-5       # LoRA wants roughly 10x a full fine-tune's rate
+lr_scheduler = "constant"
+warmup_steps = 3
+beta = 0.001               # KL coefficient against the base model (adapter disabled)
+max_grad_norm = 1.0
+save_steps = 10
+output_dir = "outputs/tutor-rl-qwen35-9b-bigmath"  # outside git; see .gitignore
+
+[eval]
+problems = 100             # first N held-out test problems, same for both tutors
+episodes_per_problem = 2
+seed = 1234
+
+[data]
+# The paper's Big-Math split (10,000 train / 500 test), published by its first author.
+format = "bigmath"
+dataset = "rd211/Big-Math-RL-Verified-Filtered"
+revision = "80714c393abc52de4025c3e7fc6acd30f376be52"
+train_split = "train"
+train_limit = 2000
+eval_split = "test"
+eval_limit = 100
+hub_dataset = "tutor-rl-bigmath"
