@@ -80,7 +80,7 @@ _FULL_STARTUP = (
     ("cache_scan", "Cache-state check (instrumentation)", "cache_state", "container"),
     (
         "tokenizer_sync",
-        "Tokenizer/config sync (Volume + HF metadata)",
+        "Model/tokenizer file sync (Volume + HF metadata; includes any download)",
         "tokenizer_ready",
         "container",
     ),
@@ -91,7 +91,12 @@ _FULL_STARTUP = (
         "load_start",
         "container",
     ),
-    ("model_load", "Model load (GGUF from Volume to GPU)", "model_loaded", "container"),
+    (
+        "model_load",
+        "Model load to GPU (historical: GGUF; now Safetensors + 4-bit BnB quantization)",
+        "model_loaded",
+        "container",
+    ),
     (
         "engine_init",
         "Profiling, KV cache, warmup, kernel JIT",
@@ -384,6 +389,9 @@ def build_timeline(trial: dict[str, Any]) -> dict[str, float]:
     clock = trial.get("clock") or {}
     t0_true = trial["t0_wall"] - (clock.get("local_minus_ntp") or 0.0)
     events = {event["event"]: event for event in trial.get("container_events", [])}
+    # Safetensors runs log model_files_ready; historical GGUF runs logged tokenizer_config_ready.
+    if "model_files_ready" in events and "tokenizer_config_ready" not in events:
+        events["tokenizer_config_ready"] = events["model_files_ready"]
     timeline: dict[str, float] = {}
     records = trial.get("relay", [])
     if records:
@@ -506,8 +514,11 @@ def describe_trial(trial: dict[str, Any]) -> dict[str, Any]:
         "snapshot": snapshot,
         "cold": cold,
         "cache": {
-            "gguf_cached": cache.get("gguf", {}).get("exists"),
-            "mmproj_cached": cache.get("mmproj", {}).get("exists"),
+            "weights_format": (
+                "safetensors" if "safetensors" in cache else "gguf" if "gguf" in cache else None
+            ),
+            # Historical GGUF runs recorded the .gguf file; Safetensors runs record the shards.
+            "weights_cached": (cache.get("safetensors") or cache.get("gguf") or {}).get("exists"),
             "tokenizer_cached": cache.get("tokenizer_snapshot", {}).get("exists"),
             "kernel_cache_files_before": sum(
                 cache.get(name, {}).get("files", 0)
@@ -631,7 +642,8 @@ def report(args: argparse.Namespace) -> None:
                 cache_text = "snapshot restore"
             else:
                 cache_text = (
-                    f"weights {'hit' if cache['gguf_cached'] else 'miss'}, "
+                    f"{cache['weights_format'] or 'weights'} "
+                    f"{'hit' if cache['weights_cached'] else 'miss'}, "
                     f"kernels {cache['kernel_cache_files_before']} files"
                 )
             seconds = {stage["key"]: stage["seconds"] for stage in item["stages"]}
