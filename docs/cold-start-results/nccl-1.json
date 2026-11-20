@@ -1,0 +1,432 @@
+{
+  "label": "nccl",
+  "trial": 1,
+  "prompt": "What does the derivative of a function tell us? Answer in two sentences.",
+  "started_utc": "2026-11-19T03:00:17.662987+00:00",
+  "t0_wall": 1795057217.662998,
+  "clock": {
+    "local_minus_ntp": 0.0802,
+    "round_trip": 0.0293
+  },
+  "seconds_waited_for_scale_down": 1.6,
+  "containers_before": 0,
+  "containers_seen": [
+    {
+      "container_id": "ta-01M7RVYWQ4NWJJHYZF1BWY2Y5R",
+      "app_id": "ap-tiYfzese6WYgb4b1M6QIaI",
+      "app_name": "socratic-tutor-qwen",
+      "start_time": "Pending",
+      "seen": 1.56
+    }
+  ],
+  "task_ids": [
+    "ta-01M7RVYWQ4NWJJHYZF1BWY2Y5R"
+  ],
+  "new_task_id": true,
+  "client": {
+    "first": {
+      "text": 109.7484,
+      "empty_text": 113.7108
+    },
+    "answer_chars": 300,
+    "errors": [],
+    "headers": 0.2114,
+    "status": 200,
+    "end": 113.7109
+  },
+  "relay": [
+    {
+      "method": "POST",
+      "path": "/v1/chat/completions",
+      "received": 0.2474,
+      "first": {
+        "role": 109.7357,
+        "content": 109.7357,
+        "finish": 113.6893,
+        "done": 113.7051
+      },
+      "forwarded": 0.3839,
+      "headers": 109.7354,
+      "status": 200,
+      "first_byte": 109.7357,
+      "end": 113.7052
+    }
+  ],
+  "container_events": [
+    {
+      "boot_wall": 1795057222.99,
+      "event": "serve_entered",
+      "modal_cloud_provider": "CLOUD_PROVIDER_AWS",
+      "modal_image_id": "im-J87pc1JJAQwOwc6AG517LN",
+      "modal_region": "us-east",
+      "modal_task_id": "ta-01M7RVYWQ4NWJJHYZF1BWY2Y5R",
+      "mono": 2.4799,
+      "phase": "snapshot",
+      "process_start_wall": 1795057223.27,
+      "rx_bytes": 360,
+      "wall": 1795057225.4701,
+      "log_task_id": "ta-01M7RVYWQ4NWJJHYZF1BWY2Y5R"
+    },
+    {
+      "event": "cache_state",
+      "flashinfer_cache": {
+        "bytes": 0,
+        "exists": false,
+        "files": 0
+      },
+      "modal_cloud_provider": "CLOUD_PROVIDER_AWS",
+      "modal_image_id": "im-J87pc1JJAQwOwc6AG517LN",
+      "modal_region": "us-east",
+      "modal_task_id": "ta-01M7RVYWQ4NWJJHYZF1BWY2Y5R",
+      "mono": 2.9255,
+      "safetensors": {
+        "bytes": 19306310880,
+        "exists": true,
+        "files": 4
+      },
+      "tokenizer_snapshot": {
+        "bytes": 23082781,
+        "exists": true,
+        "files": 12
+      },
+      "triton_cache": {
+        "bytes": 55858909,
+        "exists": true,
+        "files": 1111
+      },
+      "vllm_cache": {
+        "bytes": 0,
+        "exists": false,
+        "files": 0
+      },
+      "wall": 1795057225.9157,
+      "log_task_id": "ta-01M7RVYWQ4NWJJHYZF1BWY2Y5R"
+    },
+    {
+      "bytes": 19306310880,
+      "event": "model_files_ready",
+      "exists": true,
+      "files": 4,
+      "modal_cloud_provider": "CLOUD_PROVIDER_AWS",
+      "modal_image_id": "im-J87pc1JJAQwOwc6AG517LN",
+      "modal_region": "us-east",
+      "modal_task_id": "ta-01M7RVYWQ4NWJJHYZF1BWY2Y5R",
+      "mono": 3.1523,
+      "wall": 1795057226.1425,
+      "log_task_id": "ta-01M7RVYWQ4NWJJHYZF1BWY2Y5R"
+    },
+    {
+      "event": "vllm_spawned",
+      "modal_cloud_provider": "CLOUD_PROVIDER_AWS",
+      "modal_image_id": "im-J87pc1JJAQwOwc6AG517LN",
+      "modal_region": "us-east",
+      "modal_task_id": "ta-01M7RVYWQ4NWJJHYZF1BWY2Y5R",
+      "mono": 3.1544,
+      "spawned_mono": 3.1544,
+      "wall": 1795057226.1446,
+      "log_task_id": "ta-01M7RVYWQ4NWJJHYZF1BWY2Y5R"
+    },
+    {
+      "event": "gpu",
+      "gpu": "NVIDIA L40S, 46068 MiB",
+      "modal_cloud_provider": "CLOUD_PROVIDER_AWS",
+      "modal_image_id": "im-J87pc1JJAQwOwc6AG517LN",
+      "modal_region": "us-east",
+      "modal_task_id": "ta-01M7RVYWQ4NWJJHYZF1BWY2Y5R",
+      "mono": 3.1871,
+      "wall": 1795057226.1773,
+      "log_task_id": "ta-01M7RVYWQ4NWJJHYZF1BWY2Y5R"
+    },
+    {
+      "boot_wall": 1795057222.987,
+      "event": "vllm_ready",
+      "modal_cloud_provider": "CLOUD_PROVIDER_AWS",
+      "modal_image_id": "im-J87pc1JJAQwOwc6AG517LN",
+      "modal_region": "us-east",
+      "modal_task_id": "ta-01M7RVYWQ4NWJJHYZF1BWY2Y5R",
+      "mono": 95.187,
+      "process_start_wall": 1795057223.267,
+      "rx_bytes": 27151,
+      "wall": 1795057318.1772,
+      "log_task_id": "ta-01M7RVYWQ4NWJJHYZF1BWY2Y5R"
+    },
+    {
+      "event": "warmup_done",
+      "modal_cloud_provider": "CLOUD_PROVIDER_AWS",
+      "modal_image_id": "im-J87pc1JJAQwOwc6AG517LN",
+      "modal_region": "us-east",
+      "modal_task_id": "ta-01M7RVYWQ4NWJJHYZF1BWY2Y5R",
+      "mono": 97.1245,
+      "requests": 2.0,
+      "wall": 1795057320.1147,
+      "log_task_id": "ta-01M7RVYWQ4NWJJHYZF1BWY2Y5R"
+    },
+    {
+      "boot_wall": 1795057222.989,
+      "event": "sleeping",
+      "modal_cloud_provider": "CLOUD_PROVIDER_AWS",
+      "modal_image_id": "im-J87pc1JJAQwOwc6AG517LN",
+      "modal_region": "us-east",
+      "modal_task_id": "ta-01M7RVYWQ4NWJJHYZF1BWY2Y5R",
+      "mono": 98.9786,
+      "process_start_wall": 1795057223.269,
+      "rx_bytes": 27151,
+      "snapshot_id": "e4270b541db8",
+      "wall": 1795057321.9688,
+      "log_task_id": "ta-01M7RVYWQ4NWJJHYZF1BWY2Y5R"
+    },
+    {
+      "boot_wall": 1795057222.992,
+      "event": "restored",
+      "modal_cloud_provider": "CLOUD_PROVIDER_AWS",
+      "modal_image_id": "im-J87pc1JJAQwOwc6AG517LN",
+      "modal_region": "us-east",
+      "modal_task_id": "ta-01M7RVYWQ4NWJJHYZF1BWY2Y5R",
+      "mono": 102.6623,
+      "process_start_wall": 1795057223.272,
+      "rx_bytes": 27151,
+      "snapshot_id": "e4270b541db8",
+      "snapshot_task_id": "ta-01M7RVYWQ4NWJJHYZF1BWY2Y5R",
+      "wall": 1795057325.6525,
+      "log_task_id": "ta-01M7RVYWQ4NWJJHYZF1BWY2Y5R"
+    },
+    {
+      "boot_wall": 1795057222.987,
+      "event": "awake",
+      "modal_cloud_provider": "CLOUD_PROVIDER_AWS",
+      "modal_image_id": "im-J87pc1JJAQwOwc6AG517LN",
+      "modal_region": "us-east",
+      "modal_task_id": "ta-01M7RVYWQ4NWJJHYZF1BWY2Y5R",
+      "mono": 103.3668,
+      "process_start_wall": 1795057223.267,
+      "rx_bytes": 27151,
+      "wall": 1795057326.357,
+      "log_task_id": "ta-01M7RVYWQ4NWJJHYZF1BWY2Y5R"
+    },
+    {
+      "event": "gpu",
+      "gpu": "NVIDIA L40S, 46068 MiB",
+      "modal_cloud_provider": "CLOUD_PROVIDER_AWS",
+      "modal_image_id": "im-J87pc1JJAQwOwc6AG517LN",
+      "modal_region": "us-east",
+      "modal_task_id": "ta-01M7RVYWQ4NWJJHYZF1BWY2Y5R",
+      "mono": 103.3985,
+      "wall": 1795057326.3887,
+      "log_task_id": "ta-01M7RVYWQ4NWJJHYZF1BWY2Y5R"
+    },
+    {
+      "boot_wall": 1795057222.991,
+      "cache_state": {
+        "flashinfer_cache": {
+          "bytes": 0,
+          "exists": true,
+          "files": 1
+        },
+        "safetensors": {
+          "bytes": 19306310880,
+          "exists": true,
+          "files": 4
+        },
+        "tokenizer_snapshot": {
+          "bytes": 23082781,
+          "exists": true,
+          "files": 12
+        },
+        "triton_cache": {
+          "bytes": 55858909,
+          "exists": true,
+          "files": 1111
+        },
+        "vllm_cache": {
+          "bytes": 944,
+          "exists": true,
+          "files": 1
+        }
+      },
+      "event": "first_token_observed",
+      "modal_cloud_provider": "CLOUD_PROVIDER_AWS",
+      "modal_image_id": "im-J87pc1JJAQwOwc6AG517LN",
+      "modal_region": "us-east",
+      "modal_task_id": "ta-01M7RVYWQ4NWJJHYZF1BWY2Y5R",
+      "mono": 104.5408,
+      "poll_interval": 0.1,
+      "prefill_seconds": -0.0,
+      "process_start_wall": 1795057223.271,
+      "prompt_tokens": 617.0,
+      "queue_seconds": -0.0,
+      "requests": 1.0,
+      "rx_bytes": 27151,
+      "ttft_seconds": 0.282023,
+      "wall": 1795057327.531,
+      "log_task_id": "ta-01M7RVYWQ4NWJJHYZF1BWY2Y5R"
+    }
+  ],
+  "vllm_milestones": {
+    "cli_imported": {
+      "offset": 21.793,
+      "reported_seconds": null
+    },
+    "model_loaded": {
+      "offset": 76.19,
+      "reported_seconds": 14.640303
+    },
+    "engine_initialized": {
+      "offset": 89.761,
+      "reported_seconds": 13.48
+    },
+    "api_started": {
+      "offset": 92.018,
+      "reported_seconds": null
+    }
+  },
+  "snapshot_log": [
+    "ta-01M7RVYWQ4NWJJHYZF1BWY2Y5R Creating GPU memory snapshot for Function.",
+    "ta-01M7RVYWQ4NWJJHYZF1BWY2Y5R [vllm +21.786s] (APIServer pid=13) INFO 11-19 03:00:47 [api_utils.py:347]   \u2588\u2584\u2588\u2580 \u2588     \u2588     \u2588     \u2588  model   /__modal/volumes/vo-QyVqVQ109QqWpBEGT9Qhj1/huggingface/hub/models--unsloth--Qwen3.5-9B/snapshots/005429cee5cb648998cf2b70eebdd83175989c9a",
+    "35762e1c871ad0ccb60c8ee5ba337b9a', 'max_model_len': -1, 'quantization': 'bitsandbytes', 'enforce_eager': True, 'served_model_name': ['socratic-tutor'], 'enable_sleep_mode': True, 'download_dir': '/cache/huggingface/hub', 'reasoning_parser': 'qwen3', 'gpu_memory_utilization': 0.85, 'max_num_seqs': 4}",
+    "llm_c', 'native'], gelu_and_mul_sparse=['triton', 'native']), enable_flashinfer_autotune=True, enable_rocm_segmented_attn_autotune=False, enable_cutedsl_warmup=True, enable_jit_warmup=False, moe_backend='auto', sparse_indexer_topk_backend='auto', linear_backend='auto', linear_backend_per_quant=None)"
+  ],
+  "summary": {
+    "label": "nccl",
+    "trial": 1,
+    "task_id": "ta-01M7RVYWQ4NWJJHYZF1BWY2Y5R",
+    "gpu": "NVIDIA L40S, 46068 MiB",
+    "ttft_seconds": 109.7484,
+    "snapshot": {
+      "mode": "created",
+      "snapshot_id": "e4270b541db8",
+      "snapshot_task_id": "ta-01M7RVYWQ4NWJJHYZF1BWY2Y5R",
+      "restored_task_id": "ta-01M7RVYWQ4NWJJHYZF1BWY2Y5R",
+      "restored_from_other_container": false,
+      "modal_log": [
+        "ta-01M7RVYWQ4NWJJHYZF1BWY2Y5R Creating GPU memory snapshot for Function.",
+        "ta-01M7RVYWQ4NWJJHYZF1BWY2Y5R [vllm +21.786s] (APIServer pid=13) INFO 11-19 03:00:47 [api_utils.py:347]   \u2588\u2584\u2588\u2580 \u2588     \u2588     \u2588     \u2588  model   /__modal/volumes/vo-QyVqVQ109QqWpBEGT9Qhj1/huggingface/hub/models--unsloth--Qwen3.5-9B/snapshots/005429cee5cb648998cf2b70eebdd83175989c9a",
+        "35762e1c871ad0ccb60c8ee5ba337b9a', 'max_model_len': -1, 'quantization': 'bitsandbytes', 'enforce_eager': True, 'served_model_name': ['socratic-tutor'], 'enable_sleep_mode': True, 'download_dir': '/cache/huggingface/hub', 'reasoning_parser': 'qwen3', 'gpu_memory_utilization': 0.85, 'max_num_seqs': 4}",
+        "llm_c', 'native'], gelu_and_mul_sparse=['triton', 'native']), enable_flashinfer_autotune=True, enable_rocm_segmented_attn_autotune=False, enable_cutedsl_warmup=True, enable_jit_warmup=False, moe_backend='auto', sparse_indexer_topk_backend='auto', linear_backend='auto', linear_backend_per_quant=None)"
+      ]
+    },
+    "cold": {
+      "no_containers_before_request": true,
+      "new_task_id": true,
+      "process_started_after_request": true
+    },
+    "cache": {
+      "weights_format": "safetensors",
+      "weights_cached": true,
+      "tokenizer_cached": true,
+      "kernel_cache_files_before": 1111,
+      "network_mb_until_ready": 0.0
+    },
+    "engine": {
+      "ttft_seconds": 0.282023,
+      "queue_seconds": -0.0,
+      "prefill_seconds": -0.0,
+      "prompt_tokens": 617.0
+    },
+    "tool_call_before_answer": false,
+    "errors": [],
+    "stages": [
+      {
+        "key": "local_backend",
+        "label": "Local backend until upstream request",
+        "seconds": 0.247,
+        "basis": "same-clock"
+      },
+      {
+        "key": "provisioning",
+        "label": "Modal routing, GPU scheduling, container creation",
+        "seconds": 5.44,
+        "basis": "cross-host"
+      },
+      {
+        "key": "runtime_init",
+        "label": "Container runtime and function import",
+        "seconds": 2.2,
+        "basis": "container"
+      },
+      {
+        "key": "cache_scan",
+        "label": "Cache-state check (instrumentation)",
+        "seconds": 0.446,
+        "basis": "container"
+      },
+      {
+        "key": "tokenizer_sync",
+        "label": "Model/tokenizer file sync (Volume + HF metadata; includes any download)",
+        "seconds": 0.227,
+        "basis": "container"
+      },
+      {
+        "key": "vllm_import",
+        "label": "vLLM CLI imports (torch, vLLM)",
+        "seconds": 21.795,
+        "basis": "container"
+      },
+      {
+        "key": "engine_spawn",
+        "label": "Config resolution, engine spawn, CUDA init",
+        "seconds": 39.757,
+        "basis": "container"
+      },
+      {
+        "key": "model_load",
+        "label": "Model load to GPU (historical: GGUF; now Safetensors + 4-bit BnB quantization)",
+        "seconds": 14.64,
+        "basis": "container"
+      },
+      {
+        "key": "engine_init",
+        "label": "Profiling, KV cache, warmup, kernel JIT",
+        "seconds": 13.571,
+        "basis": "container"
+      },
+      {
+        "key": "api_startup",
+        "label": "API server startup until /health",
+        "seconds": 2.272,
+        "basis": "container"
+      },
+      {
+        "key": "warmup",
+        "label": "Warmup requests before the snapshot",
+        "seconds": 1.938,
+        "basis": "container"
+      },
+      {
+        "key": "sleep",
+        "label": "Prefix-cache reset and vLLM sleep (level 1)",
+        "seconds": 1.854,
+        "basis": "container"
+      },
+      {
+        "key": "snapshot",
+        "label": "Modal snapshot capture, then restore in place",
+        "seconds": 3.684,
+        "basis": "container"
+      },
+      {
+        "key": "wake_up",
+        "label": "vLLM wake_up: weights to GPU, KV cache",
+        "seconds": 0.704,
+        "basis": "container"
+      },
+      {
+        "key": "first_token",
+        "label": "Held request until first token in engine",
+        "seconds": 1.174,
+        "basis": "container"
+      },
+      {
+        "key": "return_path",
+        "label": "First token back to relay",
+        "seconds": -0.213,
+        "basis": "cross-host"
+      },
+      {
+        "key": "backend_stream",
+        "label": "Relay through backend to client text",
+        "seconds": 0.013,
+        "basis": "same-clock"
+      }
+    ]
+  }
+}
