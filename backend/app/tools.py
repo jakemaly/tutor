@@ -1,28 +1,30 @@
 """LangGraph web_search tool backed by a private SearXNG instance."""
 
 import hashlib
-from urllib.parse import urlparse
 from typing import Annotated
+from urllib.parse import urlparse
 
-
-from langchain_core.messages import HumanMessage, ToolMessage
-from langgraph.prebuilt import InjectedState
 import httpx
+from langchain_core.messages import HumanMessage, ToolMessage
 from langchain_core.tools import ToolException, tool
-
-
+from langgraph.prebuilt import InjectedState
 
 MAX_RESULTS = 5
 MAX_SNIPPET_CHARS = 300
 
-def source_id(url:str) -> str:
+
+def source_id(url: str) -> str:
     return hashlib.sha1(url.encode()).hexdigest()[:8]
 
-def make_web_search(searxng_url: str, timeout:float = 8.0, max_results: int = 5, max_calls: int = 3):
+
+def make_web_search(
+    searxng_url: str, timeout: float = 8.0, max_results: int = 5, max_calls: int = 3
+):
     @tool(response_format="content_and_artifact")
-    async def web_search(query: str, state: Annotated[dict, InjectedState]
-                         ) -> tuple[str, list[dict[str, str]] | None]:
-        """Search the web for current or recent information. 
+    async def web_search(
+        query: str, state: Annotated[dict, InjectedState]
+    ) -> tuple[str, list[dict[str, str]] | None]:
+        """Search the web for current or recent information.
         Returns up to five sources, each with an id to cite as [[web:id]].
         """
         used = 0
@@ -32,11 +34,11 @@ def make_web_search(searxng_url: str, timeout:float = 8.0, max_results: int = 5,
             if isinstance(message, ToolMessage) and message.name == "web_search":
                 used += 1
             if used >= max_calls:
-                    return (
-        "Search limit reached. Do not call web_search again. "
-        "Write your final answer now using the results you already have.",
-        None,
-    )
+                return (
+                    "Search limit reached. Do not call web_search again. "
+                    "Write your final answer now using the results you already have.",
+                    None,
+                )
 
         query = query.strip()[:200]
         if not query:
@@ -86,4 +88,5 @@ def make_web_search(searxng_url: str, timeout:float = 8.0, max_results: int = 5,
         )
 
         return text, sources
+
     return web_search

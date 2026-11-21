@@ -360,17 +360,20 @@ def _text_from_chunk(chunk: AIMessageChunk) -> str:
         )
     return ""
 
+
 def _render_web_markers(text: str, web_sources: dict[str, dict[str, str]]) -> str:
     """Turn [[web:ID]] into a link, but only for sources returned in this run."""
+
     def replace(match: re.Match[str]) -> str:
         source = web_sources.get(match.group(1).lower())
         if source is None:
             return "[source unavailable]"
-        title = source["title"].replace("[", "(").replace("]", ")")
         host = urlparse(source["url"]).netloc.removeprefix("www.")
         return f'[{host}]({source["url"]} "web-citation")'
+
     text = WEB_PATTERN.sub(replace, text)
     return re.sub(r"\[\[web:[^\]]*\]\]", "[source unavailable]", text)
+
 
 async def _stream_graph(
     graph: Any,
@@ -422,19 +425,23 @@ async def _stream_graph(
                     elif isinstance(message, ToolMessage) and message.tool_call_id in calls:
                         failed = message.status == "error"
                         if message.name == "web_search":
-                            artifact = message.artifact if isinstance(message.artifact, list) else []
+                            artifact = (
+                                message.artifact if isinstance(message.artifact, list) else []
+                            )
                             for source in artifact:
                                 existing = web_sources.get(source["id"])
                                 if existing is None or existing["url"] == source["url"]:
                                     web_sources[source["id"]] = source
                             response = {
-                                "results": [{"title": s["title"], "url": s["url"]} for s in artifact],
+                                "results": [
+                                    {"title": s["title"], "url": s["url"]} for s in artifact
+                                ],
                                 "skipped": message.artifact is None and not failed,
                             }
                         else:
                             response = {"loaded": not failed}
                         calls.pop(message.tool_call_id).set_response(response, is_error=failed)
-                        
+
     append_text("", final=True)
     if cited_links:
         controller.append_text("\n\n**Sources:** " + " · ".join(dict.fromkeys(cited_links)))

@@ -34,8 +34,8 @@ official website), up to three searches in total, then write your answer. When
 sources disagree, prefer the newest dated official source. Cite each web-derived
 sentence with the exact marker [[web:ID]] at the end of the sentence, using only ids
 returned by the tool. Never invent ids or URLs. Do not write a "Sources" section or
-raw URLs: the app renders the links from your markers. Example of a correctly cited sentence: Python 3.15.2 is the latest release. [[web:ab12cd34]]"""
-
+raw URLs: the app renders the links from your markers. Example of a correctly cited 
+sentence: Python 3.15.2 is the latest release. [[web:ab12cd34]]"""  # noqa: E501
 
 
 def create_graph(model: BaseChatModel, settings: Settings | None = None):
@@ -46,15 +46,15 @@ def create_graph(model: BaseChatModel, settings: Settings | None = None):
         tools.append(
             make_web_search(
                 settings.searxng_url,
-                timeout = settings.web_tool_timeout_s,
+                timeout=settings.web_tool_timeout_s,
                 max_results=settings.web_search_max_results,
-                max_calls=settings.web_max_calls_per_answer
+                max_calls=settings.web_max_calls_per_answer,
             )
         )
         system_prompt += WEB_SEARCH_PROMPT
-    
+
     # LCEL formats the prompt, then passes its messages to the configured model.
-    
+
     chat_chain = ChatPromptTemplate.from_messages(
         [
             # Skills can contain JSON/code braces; they are literal text, not templates.
@@ -62,7 +62,6 @@ def create_graph(model: BaseChatModel, settings: Settings | None = None):
             MessagesPlaceholder("messages"),
         ]
     ) | model.bind_tools(tools)
-
 
     async def chat(state: MessagesState) -> dict[str, list[BaseMessage]]:
         """Stream one assistant reply and return it as the graph's new message."""
