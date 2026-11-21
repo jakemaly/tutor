@@ -52,7 +52,7 @@ These are design hypotheses, not claims that a palette or font improves learning
 
 ## Styling set
 
-The app tokens live in [`frontend/src/design-tokens.css`](frontend/src/design-tokens.css). Figma mirrors them in `TMI Core` with CSS code syntax on each variable. Text styles use the names below. Keep the CSS and Figma values aligned when changing a token.
+The app tokens live in [`frontend/src/design-tokens.css`](frontend/src/design-tokens.css). The table below maps the Figma styles to their web values. Message sizes and line heights follow the deployed app.
 
 ### Color
 
@@ -78,11 +78,11 @@ Teal and coral identify the TMI mark; they are not tutor/student role colors or 
 
 ### Typography
 
-| Figma text style | Font | Size / line height | Use |
+| Figma text style | Font | Web size / line height | Use |
 |---|---|---:|---|
 | `TMI/Display/Home` | Alike Regular | 66 / 82.5 px | Home heading |
-| `TMI/Body/Tutor` | SF Pro Regular | 19 / 29 px | Tutor response |
-| `TMI/Body/Student` | SF Pro Regular | 16 / 22 px | Student message |
+| `TMI/Body/Tutor` | SF Pro Regular | 16 / 26 px | Tutor response |
+| `TMI/Body/Student` | SF Pro Regular | 16 / 24 px | Student message |
 | `TMI/Composer/Placeholder` | SF Pro Regular | 22 / 31 px | Composer placeholder |
 | `TMI/Control/Prompt` | SF Pro Regular | 18 / 25.2 px | Suggested prompt |
 | `TMI/Control/Brand` | SF Pro Semibold | 19 / 25 px | App name |

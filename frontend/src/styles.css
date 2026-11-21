@@ -236,16 +236,18 @@ html, body, #root { width: 100%; min-width: 320px; height: 100%; margin: 0; }
 .aui-message-group { display: flex; flex-direction: column; gap: 61px; padding-bottom: 24px; }
 .aui-message-group:empty { display: none; }
 .aui-user-message-content-wrapper { max-width: var(--layout-student-message-max); }
+.aui-user-message-content,
+[data-slot="aui_assistant-message-content"] {
+  font-size: var(--type-size-message);
+}
 .aui-user-message-content {
   padding: 20px;
   border-radius: var(--radius-student);
   background: var(--color-surface-student);
-  font-size: var(--type-size-student);
   line-height: var(--type-line-student);
 }
 [data-slot="aui_assistant-message-content"] {
   max-width: 900px;
-  font-size: var(--type-size-tutor);
   line-height: var(--type-line-tutor);
 }
 [data-slot="aui_assistant-message-content"] .aui-md-p { line-height: inherit; }

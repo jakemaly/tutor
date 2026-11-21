@@ -50,10 +50,9 @@
 
   --type-size-display: 66px;
   --type-line-display: 1.25;
-  --type-size-tutor: 19px;
-  --type-line-tutor: 29px;
-  --type-size-student: 16px;
-  --type-line-student: 22px;
+  --type-size-message: 16px;
+  --type-line-tutor: 26px;
+  --type-line-student: 24px;
   --type-size-composer: 22px;
   --type-line-composer: 31px;
   --type-size-prompt: 18px;
