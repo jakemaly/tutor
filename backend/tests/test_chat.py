@@ -150,6 +150,52 @@ def test_streams_incremental_text_and_uses_the_full_supplied_history() -> None:
     ]
 
 
+def test_study_tool_traces_are_omitted_but_answer_submissions_remain_learner_turns() -> None:
+    """Tool UI metadata does not pollute model history, while selections remain explicit."""
+    messages = _messages_for_graph(
+        [
+            user_message("Quiz me on photosynthesis."),
+            {
+                "role": "assistant",
+                "content": [
+                    {"type": "text", "text": "Choose an answer."},
+                    {
+                        "type": "tool-call",
+                        "toolCallId": "study-1",
+                        "toolName": "present_study_element",
+                        "input": {
+                            "kind": "mcq",
+                            "question": "Where does photosynthesis occur?",
+                            "options": [{"id": "a", "label": "Chloroplast"}],
+                        },
+                    },
+                ],
+            },
+            {
+                "role": "tool",
+                "content": [
+                    {
+                        "type": "tool-result",
+                        "toolCallId": "study-1",
+                        "toolName": "present_study_element",
+                        "output": {"type": "json", "value": {"presented": True}},
+                    }
+                ],
+            },
+            {
+                "role": "assistant",
+                "content": [{"type": "text", "text": "Your turn."}],
+            },
+            user_message(
+                "Study question: Where does photosynthesis occur?\nSelected option IDs: a"
+            ),
+        ]
+    )
+
+    assert [message.type for message in messages] == ["human", "ai", "ai", "human"]
+    assert messages[-1].content.endswith("Selected option IDs: a")
+
+
 def test_empty_assistant_placeholder_is_removed_but_nonempty_history_is_kept() -> None:
     """Only assistant-ui's empty final placeholder is removed from the supplied history."""
     messages = _messages_for_graph(
@@ -764,3 +810,95 @@ def test_streamed_tool_call_loads_skill_and_resumes_model(skill_name: str) -> No
         "user",
     ]
     asyncio.run(http_client.aclose())
+
+
+def test_study_element_tool_is_streamed_to_the_native_ui() -> None:
+    """The graph executes a validated study tool and emits assistant-stream tool events."""
+    requests = []
+    args = {
+        "kind": "mcq",
+        "question": "Where does photosynthesis occur?",
+        "options": [
+            {"id": "a", "label": "Chloroplast"},
+            {"id": "b", "label": "Mitochondrion"},
+        ],
+    }
+
+    def event(delta, finish_reason=None):
+        return (
+            "data: "
+            + json.dumps(
+                {
+                    "id": "test",
+                    "object": "chat.completion.chunk",
+                    "created": 0,
+                    "model": "test-model",
+                    "choices": [{"index": 0, "delta": delta, "finish_reason": finish_reason}],
+                }
+            )
+            + "\n\n"
+        )
+
+    def respond(request):
+        requests.append(json.loads(request.content))
+        if len(requests) == 1:
+            events = [
+                event(
+                    {
+                        "role": "assistant",
+                        "tool_calls": [
+                            {
+                                "index": 0,
+                                "id": "study-1",
+                                "type": "function",
+                                "function": {
+                                    "name": "present_study_element",
+                                    "arguments": json.dumps(args),
+                                },
+                            }
+                        ],
+                    }
+                ),
+                event({}, "tool_calls"),
+            ]
+        else:
+            events = [event({"content": "Choose an answer."}), event({}, "stop")]
+        return httpx.Response(
+            200,
+            headers={"content-type": "text/event-stream"},
+            stream=StaticEventStream([*events, "data: [DONE]\n\n"]),
+        )
+
+    http_client = httpx.AsyncClient(transport=httpx.MockTransport(respond))
+    model = ChatOpenAI(
+        model="test-model",
+        base_url="https://example.invalid/v1",
+        api_key="test-key",
+        use_responses_api=False,
+        stream_usage=False,
+        streaming=True,
+        http_async_client=http_client,
+    )
+    client = TestClient(create_app(settings=configured_settings(), model=model))
+
+    response = client.post(
+        "/api/chat",
+        json={"messages": [user_message("Quiz me on photosynthesis.")]},
+    )
+    asyncio.run(http_client.aclose())
+
+    assert response.status_code == 200
+    tool_names = {tool["function"]["name"] for tool in requests[0]["tools"]}
+    assert {"load_skill", "present_study_element", "present_html_preview"} <= tool_names
+    assert requests[1]["messages"][-1]["role"] == "tool"
+    assert json.loads(requests[1]["messages"][-1]["content"]) == {"presented": True}
+
+    events = [
+        (line[0], json.loads(line[2:]))
+        for line in response.text.splitlines()
+        if line.startswith(("b:", "c:", "a:"))
+    ]
+    assert [kind for kind, _ in events] == ["b", "c", "a"]
+    assert events[0][1]["toolName"] == "present_study_element"
+    assert json.loads(events[1][1]["argsTextDelta"]) == args
+    assert events[2][1]["result"] == {"presented": True}

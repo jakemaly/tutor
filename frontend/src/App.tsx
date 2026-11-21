@@ -1,6 +1,8 @@
 import { useMemo, useState } from "react";
 import {
+  AuiConfig,
   AssistantRuntimeProvider,
+  Tools,
   useAui,
   useRemoteThreadListRuntime,
 } from "@assistant-ui/react";
@@ -18,9 +20,14 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { backendToolToolkit } from "@/components/assistant-ui/study-element-tool";
 
 export default function App() {
   const [error, setError] = useState<string | null>(null);
+  const config = useMemo(
+    () => AuiConfig({ tools: Tools({ toolkit: backendToolToolkit }) }),
+    [],
+  );
   const adapter = useMemo(
     () =>
       Object.assign(new SessionThreadListAdapter(), {
@@ -51,7 +58,7 @@ export default function App() {
   };
 
   return (
-    <AssistantRuntimeProvider runtime={runtime}>
+    <AssistantRuntimeProvider runtime={runtime} config={config}>
       <TooltipProvider>
         <SidebarProvider className="app-shell">
           <ThreadListSidebar />

@@ -7,7 +7,7 @@ controls when the full instructions enter its context.
 | Frontmatter | Full instructions | Example |
 | --- | --- | --- |
 | `preload: true` | In the system message from the start | `socratic-questioning` |
-| `preload: false` (default) | Returned when the model calls `load_skill(name)` | `worked-example` |
+| `preload: false` (default) | Returned when the model calls `load_skill(name)` | `worked-example`, `study-elements` |
 
 “Invocation only” means the model may invoke the loader itself when the description matches;
 users do not need to name the skill. It does not mean explicit user invocation is required.
@@ -43,6 +43,7 @@ System message:
   Base assistant instructions
   Available skills:
     - socratic-questioning (preloaded): description
+    - study-elements (invocation only): description
     - worked-example (invocation only): description
   Skill selection instructions
   <loaded_skill name="socratic-questioning">full instructions</loaded_skill>
@@ -58,14 +59,21 @@ model for its answer. The tool only accepts discovered catalog names; it does no
 arbitrary model-supplied paths or execute scripts. Unknown names return a recoverable tool
 error. The model can answer directly when no new skill is needed.
 
+The graph also exposes a small allowlist of UI tools. `present_study_element` accepts
+validated flashcards and practice questions; learners submit selected option IDs as chat
+turns. `present_html_preview` is bounded and rendered with Safe Content Frame so generated
+HTML runs outside the application's DOM and origin.
+
 The chat shows `Loading skill: <name>` followed by `Loaded skill: <name>`, or
 `Skill not loaded: <name>` if the call fails or is interrupted. Only the name and load
-status reach the browser; full instructions stay on the server.
+status reach the browser; full instructions stay on the server. Study-element tool calls
+render as native interactive cards, while HTML preview tool calls use Safe Content Frame.
 
 Loaded instructions remain in model context during the current request. The chat retains
-the visible trace, but the backend strips display-only skill calls/results from subsequent
-requests and rebuilds text history. The model loads a skill again on a later request if
-needed. Selection is a model judgment, not a deterministic guarantee.
+the visible tool trace, but the backend strips display-only tool calls/results from
+subsequent requests and rebuilds text history. A learner's submitted answer is retained as
+a user turn. The model loads a skill again on a later request if needed. Selection is a
+model judgment, not a deterministic guarantee.
 
 ## Inspect and test
 

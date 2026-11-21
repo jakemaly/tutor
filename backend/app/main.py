@@ -32,6 +32,7 @@ from app.models import create_chat_model
 
 logger = logging.getLogger(__name__)
 MAX_ATTACHMENT_STORAGE_BYTES = 100 * 1024 * 1024
+BACKEND_TOOL_NAMES = {"load_skill", "present_study_element", "present_html_preview"}
 CITATION_PREFIX = "[[cite:"
 CITATION_PATTERN = re.compile(r"\[\[cite:([0-9a-fA-F-]{36}):(\d+)\]\]")
 CITATION_STOP_WORDS = {
@@ -75,6 +76,11 @@ CITATION_STOP_WORDS = {
 }
 
 
+def _is_backend_tool_name(value: object) -> bool:
+    """Match only known tool names without hashing untrusted input values."""
+    return isinstance(value, str) and value in BACKEND_TOOL_NAMES
+
+
 class ChatRequest(BaseModel):
     """The text conversation sent by assistant-ui's data-stream runtime."""
 
@@ -90,7 +96,7 @@ def _message_text(message: dict[str, Any]) -> str:
     if isinstance(content, str):
         return content
     if isinstance(content, list):
-        # Skill traces are display metadata, not model history or executable client tools.
+        # Backend tool traces are display metadata, not plain text model history.
         if message.get("role") == "assistant":
             content = [
                 part
@@ -98,7 +104,7 @@ def _message_text(message: dict[str, Any]) -> str:
                 if not (
                     isinstance(part, dict)
                     and part.get("type") == "tool-call"
-                    and part.get("toolName") == "load_skill"
+                    and _is_backend_tool_name(part.get("toolName"))
                 )
             ]
         if any(
@@ -133,7 +139,7 @@ def _messages_for_graph(
             and all(
                 isinstance(part, dict)
                 and part.get("type") == "tool-result"
-                and part.get("toolName") == "load_skill"
+                and _is_backend_tool_name(part.get("toolName"))
                 for part in content
             )
         ):
@@ -398,15 +404,19 @@ async def _stream_graph(
                 for message in update.get("messages", []):
                     if isinstance(message, AIMessage):
                         for call in message.tool_calls:
-                            if call["name"] == "load_skill":
-                                tool = await controller.add_tool_call("load_skill", call["id"])
+                            if call["name"] in BACKEND_TOOL_NAMES:
+                                tool = await controller.add_tool_call(call["name"], call["id"])
                                 tool.append_args_text(json.dumps(call["args"]))
-                                calls[call["id"]] = tool
+                                calls[call["id"]] = (tool, call["name"])
                     elif isinstance(message, ToolMessage) and message.tool_call_id in calls:
                         failed = message.status == "error"
-                        calls.pop(message.tool_call_id).set_response(
-                            {"loaded": not failed}, is_error=failed
+                        tool, name = calls.pop(message.tool_call_id)
+                        result = (
+                            {"loaded": not failed}
+                            if name == "load_skill"
+                            else {"presented": not failed}
                         )
+                        tool.set_response(result, is_error=failed)
     append_text("", final=True)
     if cited_links:
         controller.append_text("\n\n**Sources:** " + " · ".join(dict.fromkeys(cited_links)))

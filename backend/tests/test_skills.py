@@ -19,6 +19,14 @@ def test_default_skill_is_preloaded_but_second_skill_is_catalog_only() -> None:
     )
 
 
+def test_study_elements_skill_is_available_without_preloading_its_instructions() -> None:
+    skills = discover_skills()
+
+    assert "study-elements (invocation only):" in SYSTEM_PROMPT
+    assert skills["study-elements"].instructions not in SYSTEM_PROMPT
+    assert "present_study_element" in make_load_skill(skills).invoke({"name": "study-elements"})
+
+
 def test_boolean_switch_controls_whether_new_skill_body_is_preloaded(tmp_path: Path) -> None:
     folder = tmp_path / "example"
     folder.mkdir()

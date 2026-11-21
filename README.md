@@ -29,6 +29,10 @@ The UI and health check work without a model. For chat, set `LLM_BASE_URL`, `LLM
 
 The chat accepts PDF, JPEG, PNG, and WebP files up to 10 MB. PDFs are text-extracted (up to 100 pages and 200,000 characters); images are sent to the configured model, which must support vision. Cite an attachment with `[[cite:SOURCE_ID:PAGE_NUMBER]]`; the backend replaces only citations that refer to a file attached in the conversation and a valid page. Uploads are held in backend memory and are cleared when the backend restarts.
 
+## Study elements and previews
+
+Ask for a flashcard, multiple-choice, true/false, or multi-select question to get an interactive native study element. Submitted choices are sent as a learner turn so the tutor can respond. HTML previews are available only when requested and render in Safe Content Frame, isolated from the app's DOM and origin.
+
 ## Checks
 
 To add tutor skills or preview the exact model system prompt, see [Authoring tutor skills](docs/skills.md).
