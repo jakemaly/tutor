@@ -43,7 +43,7 @@ export function Citation({
         render={<button type="button" />}
         aria-label={`Source ${index + 1}: ${source.title}`}
         className={cn(
-          "bg-foreground/[0.06] text-muted-foreground hover:text-foreground ms-0.5 inline-flex h-4 min-w-4 translate-y-[-2px] cursor-pointer items-center justify-center rounded px-1 align-middle font-mono text-[10px] tabular-nums",
+          "bg-foreground/6 text-muted-foreground hover:text-foreground ms-0.5 inline-flex h-4 min-w-4 -translate-y-0.5 cursor-pointer items-center justify-center rounded px-1 align-middle font-mono text-[10px] tabular-nums",
           className,
         )}
       >
