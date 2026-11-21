@@ -2,21 +2,39 @@
 
 # asyncio drives async graph calls; json decodes the line-based streaming protocol in assertions.
 import asyncio
+import io
 import json
+from uuid import uuid4
 
 # pytest and httpx test routes and emulate the model endpoint without a network.
 import httpx
 import pytest
 from fastapi.testclient import TestClient
-from langchain_core.language_models.fake_chat_models import FakeListChatModel
+from langchain_core.language_models.fake_chat_models import FakeListChatModel as BaseFakeChatModel
 from langchain_core.messages import BaseMessage, HumanMessage
 from langchain_openai import ChatOpenAI
 from pydantic import PrivateAttr
+from pypdf import PdfWriter
 
 from app.config import Settings
+from app.documents import UploadedSource, create_source
 from app.graph import SYSTEM_PROMPT, create_graph
-from app.main import ChatRequest, _messages_for_graph, create_app
+from app.main import (
+    MAX_ATTACHMENT_STORAGE_BYTES,
+    ChatRequest,
+    _citation_link,
+    _fallback_citations,
+    _messages_for_graph,
+    create_app,
+)
 from app.models import create_chat_model
+
+
+class FakeListChatModel(BaseFakeChatModel):
+    """Text-only fixture that accepts tool binding; tool calls use HTTP fixtures below."""
+
+    def bind_tools(self, tools, **kwargs):
+        return self
 
 
 def configured_settings(**overrides: object) -> Settings:
@@ -182,6 +200,195 @@ def test_rejects_non_text_parts_and_unsupported_roles() -> None:
     assert tool.status_code == 422
 
 
+def test_uploads_serves_and_removes_validated_image_source() -> None:
+    """An uploaded source is addressable by ID and removal invalidates its link."""
+    client = TestClient(create_app(settings=configured_settings()))
+    source_id = str(uuid4())
+    png = b"\x89PNG\r\n\x1a\n" + b"image data"
+
+    upload = client.put(
+        f"/api/attachments/{source_id}",
+        content=png,
+        headers={"content-type": "image/png", "x-file-name": "notes%20page.png"},
+    )
+
+    assert upload.status_code == 200
+    assert upload.json() == {
+        "id": source_id,
+        "filename": "notes page.png",
+        "mediaType": "image/png",
+        "pageCount": 1,
+    }
+    served = client.get(f"/api/attachments/{source_id}?page=1")
+    assert served.content == png
+    assert served.headers["content-type"] == "image/png"
+    assert client.get(f"/api/attachments/{source_id}?page=2").status_code == 404
+    assert client.delete(f"/api/attachments/{source_id}").status_code == 204
+    assert client.get(f"/api/attachments/{source_id}").status_code == 404
+
+
+def test_upload_rejects_when_aggregate_attachment_storage_is_full() -> None:
+    client = TestClient(create_app(settings=configured_settings()))
+    source_id = str(uuid4())
+    app = client.app
+    app.state.sources[source_id] = UploadedSource(
+        id=source_id,
+        filename="existing.png",
+        media_type="image/png",
+        data=b"x" * MAX_ATTACHMENT_STORAGE_BYTES,
+        pages=("",),
+    )
+
+    response = client.put(
+        f"/api/attachments/{uuid4()}",
+        content=b"\x89PNG\r\n\x1a\nimage data",
+        headers={"content-type": "image/png", "x-file-name": "image.png"},
+    )
+
+    assert response.status_code == 413
+    assert len(app.state.sources) == 1
+
+
+def test_upload_rejects_mismatched_mime_type_and_file_signature() -> None:
+    """Client-provided content types do not bypass the file signature check."""
+    client = TestClient(create_app(settings=configured_settings()))
+
+    response = client.put(
+        f"/api/attachments/{uuid4()}",
+        content=b"not a png",
+        headers={"content-type": "image/png", "x-file-name": "image.png"},
+    )
+
+    assert response.status_code == 422
+    assert "contents do not match" in response.json()["detail"]
+
+
+def test_chat_resolves_uploaded_image_and_validates_citation_pages() -> None:
+    """Chat receives image bytes from the shared source ID; only valid citations link."""
+    source_id = str(uuid4())
+    model = RecordingFakeChatModel(responses=[f"I can see the image [[cite:{source_id}:1]]."])
+    client = TestClient(create_app(settings=configured_settings(), model=model))
+    png = b"\x89PNG\r\n\x1a\n" + b"image data"
+    source = client.put(
+        f"/api/attachments/{source_id}",
+        content=png,
+        headers={"content-type": "image/png", "x-file-name": "diagram.png"},
+    )
+    assert source.status_code == 200
+
+    response = client.post(
+        "/api/chat",
+        json={
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": "Explain this."},
+                        {
+                            "type": "file",
+                            "data": source_id,
+                            "mimeType": "image/png",
+                            "filename": "diagram.png",
+                        },
+                    ],
+                }
+            ]
+        },
+    )
+
+    assert response.status_code == 200
+    stream_text = "".join(
+        json.loads(line[2:]) for line in response.text.splitlines() if line.startswith("0:")
+    )
+    citation = f"[diagram.png, p. 1](/api/attachments/{source_id}?page=1#page=1)"
+    assert f"I can see the image {citation}." in stream_text
+    assert f"**Sources:** {citation}" in stream_text
+    sent_content = model._seen_messages[0][-1].content
+    assert any(part.get("type") == "image_url" for part in sent_content)
+    assert any(source_id in part.get("text", "") for part in sent_content)
+
+    uploaded_source = create_source(source_id, "diagram.png", "image/png", png)
+    sources = {source_id: uploaded_source}
+    assert _citation_link(source_id, 1, sources, {source_id}) == (
+        f"[diagram.png, p. 1](/api/attachments/{source_id}?page=1#page=1)"
+    )
+    assert _citation_link(source_id, 2, sources, {source_id}) == "[source unavailable]"
+    assert _citation_link(source_id, 1, sources, set()) == "[source unavailable]"
+
+
+def test_pdf_source_keeps_page_boundaries() -> None:
+    """Extracted PDF source records retain one text slot per original page."""
+    writer = PdfWriter()
+    writer.add_blank_page(width=100, height=100)
+    writer.add_blank_page(width=100, height=100)
+    buffer = io.BytesIO()
+    writer.write(buffer)
+
+    source = create_source(str(uuid4()), "lesson.pdf", "application/pdf", buffer.getvalue())
+
+    assert source.page_count == 2
+    assert source.pages == ("", "")
+
+
+def test_chat_adds_relevant_page_link_when_model_omits_citation_marker() -> None:
+    """The chat still cites a relevant attached page when the model ignores the marker format."""
+    source_id = str(uuid4())
+    source = UploadedSource(
+        id=source_id,
+        filename="Carbohydrates_Review.pdf",
+        media_type="application/pdf",
+        data=b"%PDF-test",
+        pages=(
+            "Glucose provides quick energy for cellular respiration.",
+            "Cellulose is a structural polysaccharide in plant cell walls.",
+        ),
+    )
+    app = create_app(
+        settings=configured_settings(),
+        model=FakeListChatModel(responses=["Cellulose supports plant cell walls."]),
+    )
+    app.state.sources[source_id] = source
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/chat",
+        json={
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": "What is cellulose used for?"},
+                        {
+                            "type": "file",
+                            "data": source_id,
+                            "mimeType": "application/pdf",
+                            "filename": source.filename,
+                        },
+                    ],
+                }
+            ]
+        },
+    )
+    stream_text = "".join(
+        json.loads(line[2:]) for line in response.text.splitlines() if line.startswith("0:")
+    )
+
+    assert response.status_code == 200
+    assert "**Sources:**" in stream_text
+    assert (
+        f"Cellulose supports plant cell walls. "
+        f"[Carbohydrates_Review.pdf, p. 2](/api/attachments/{source_id}?page=2#page=2)"
+        in stream_text
+    )
+    assert (
+        f"[Carbohydrates_Review.pdf, p. 2](/api/attachments/{source_id}?page=2#page=2)"
+        in stream_text
+    )
+    assert _fallback_citations(
+        "Cellulose supports plant cell walls.", {source_id: source}, {source_id}
+    ) == [f"[Carbohydrates_Review.pdf, p. 2](/api/attachments/{source_id}?page=2#page=2)"]
+
+
 @pytest.mark.parametrize(
     "message",
     [
@@ -215,6 +422,15 @@ def test_graph_is_built_from_an_injected_langchain_model() -> None:
 
     assert response["messages"][-1].content == "A helpful answer"
     assert len(SYSTEM_PROMPT) > 0
+
+
+def test_skill_json_is_literal_context_not_a_prompt_template(monkeypatch) -> None:
+    prompt = SYSTEM_PROMPT + '\nExample: {"step": "explain"}'
+    monkeypatch.setattr("app.graph.SYSTEM_PROMPT", prompt)
+    model = RecordingFakeChatModel(responses=["A hint"])
+    graph = create_graph(model)
+    asyncio.run(graph.ainvoke({"messages": [HumanMessage(content="Help me")]}))
+    assert model._seen_messages[0][0].content == prompt
 
 
 def test_model_adapter_uses_only_the_current_endpoint_configuration(monkeypatch) -> None:
@@ -347,6 +563,8 @@ def test_openai_compatible_stream_works_through_fastapi_and_langgraph() -> None:
     assert "".join(deltas) == "OpenAI-compatible stream works."
     assert len(deltas) > 1
     sent_messages = sent_requests[0]["messages"]
+    assert sent_messages[0]["role"] == "system"
+    assert '<loaded_skill name="socratic-questioning">' in sent_messages[0]["content"]
     assert [message["content"] for message in sent_messages] == [
         SYSTEM_PROMPT,
         "First turn",
@@ -390,3 +608,159 @@ def test_closing_a_stream_cancels_an_active_model_request() -> None:
 
     assert "0:" in first_chunk
     assert model._was_cancelled
+
+
+@pytest.mark.parametrize("skill_name", ["worked-example", "../config.py"])
+def test_streamed_tool_call_loads_skill_and_resumes_model(skill_name: str) -> None:
+    """Exercise chunked tool arguments, real tool execution, and the follow-up API request."""
+    from app.skills import discover_skills
+
+    requests = []
+
+    def event(delta, finish_reason=None):
+        return (
+            "data: "
+            + json.dumps(
+                {
+                    "id": "test",
+                    "object": "chat.completion.chunk",
+                    "created": 0,
+                    "model": "test-model",
+                    "choices": [{"index": 0, "delta": delta, "finish_reason": finish_reason}],
+                }
+            )
+            + "\n\n"
+        )
+
+    def respond(request):
+        requests.append(json.loads(request.content))
+        if len(requests) == 1:
+            arguments = json.dumps({"name": skill_name})
+            events = [
+                event(
+                    {
+                        "role": "assistant",
+                        "tool_calls": [
+                            {
+                                "index": 0,
+                                "id": "load-1",
+                                "type": "function",
+                                "function": {"name": "load_skill", "arguments": arguments[:8]},
+                            }
+                        ],
+                    }
+                ),
+                event(
+                    {
+                        "tool_calls": [
+                            {
+                                "index": 0,
+                                "function": {"arguments": arguments[8:]},
+                            }
+                        ]
+                    }
+                ),
+                event({}, "tool_calls"),
+            ]
+        else:
+            events = [event({"content": "The answer is x = 4."}), event({}, "stop")]
+        return httpx.Response(
+            200,
+            headers={"content-type": "text/event-stream"},
+            stream=StaticEventStream([*events, "data: [DONE]\n\n"]),
+        )
+
+    http_client = httpx.AsyncClient(transport=httpx.MockTransport(respond))
+    model = ChatOpenAI(
+        model="test-model",
+        base_url="https://example.invalid/v1",
+        api_key="test-key",
+        use_responses_api=False,
+        stream_usage=False,
+        streaming=True,
+        http_async_client=http_client,
+    )
+    client = TestClient(create_app(settings=configured_settings(), model=model))
+    response = client.post(
+        "/api/chat",
+        json={
+            "messages": [
+                user_message(
+                    "Give me the complete worked solution to 2x + 3 = 11, including a check."
+                )
+            ]
+        },
+    )
+
+    assert len(requests) == 2
+    assert requests[0]["tools"][0]["function"]["name"] == "load_skill"
+    body = discover_skills()["worked-example"].instructions
+    assert body not in requests[0]["messages"][0]["content"]
+    messages = requests[1]["messages"]
+    assert [message["role"] for message in messages] == ["system", "user", "assistant", "tool"]
+    assert messages[-1]["tool_call_id"] == "load-1"
+    if skill_name == "worked-example":
+        assert body in messages[-1]["content"]
+    else:
+        assert "Unknown skill" in messages[-1]["content"]
+        assert "Available skills" in messages[-1]["content"]
+    deltas = [json.loads(line[2:]) for line in response.text.splitlines() if line.startswith("0:")]
+    assert "".join(deltas) == "The answer is x = 4."
+    assert body not in response.text
+
+    events = [
+        (line[0], json.loads(line[2:]))
+        for line in response.text.splitlines()
+        if line.startswith(("b:", "c:", "a:"))
+    ]
+    assert [kind for kind, _ in events] == ["b", "c", "a"]
+    assert all(event["toolCallId"] == "load-1" for _, event in events)
+    assert events[0][1]["toolName"] == "load_skill"
+    assert json.loads(events[1][1]["argsTextDelta"]) == {"name": skill_name}
+    assert events[2][1]["result"] == {"loaded": skill_name == "worked-example"}
+    assert events[2][1].get("isError", False) == (skill_name != "worked-example")
+
+    # The runtime serializes traces into history; keep the next turn text-only for the model.
+    followup = client.post(
+        "/api/chat",
+        json={
+            "messages": [
+                user_message("Solve the equation"),
+                {
+                    "role": "assistant",
+                    "content": [
+                        {
+                            "type": "tool-call",
+                            "toolCallId": "load-1",
+                            "toolName": "load_skill",
+                            "input": {"name": skill_name},
+                        }
+                    ],
+                },
+                {
+                    "role": "tool",
+                    "content": [
+                        {
+                            "type": "tool-result",
+                            "toolCallId": "load-1",
+                            "toolName": "load_skill",
+                            "output": {"type": "json", "value": {"loaded": True}},
+                        }
+                    ],
+                },
+                {
+                    "role": "assistant",
+                    "content": [{"type": "text", "text": "The answer is x = 4."}],
+                },
+                user_message("Why?"),
+            ]
+        },
+    )
+    assert followup.status_code == 200
+    assert [message["role"] for message in requests[-1]["messages"]] == [
+        "system",
+        "user",
+        "assistant",
+        "user",
+    ]
+    asyncio.run(http_client.aclose())

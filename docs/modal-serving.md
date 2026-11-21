@@ -87,4 +87,3 @@ Run `docker compose stop` to stop the local tutor.
 
 
 Verified the authenticated model endpoint, streamed a response directly from vLLM, and observed text streaming in the tutor browser. The deployment disables thinking by default and caps generated output at 512 tokens.
-

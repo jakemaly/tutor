@@ -1,37 +1,45 @@
 import { MarkdownText } from "@/components/assistant-ui/elements/markdown-text";
 import { TooltipIconButton } from "@/components/assistant-ui/elements/tooltip-icon-button";
+import {
+  MessageDaySeparator,
+  MessageTimestamp,
+} from "@/components/day-separator";
 import { Button } from "@/components/ui/button";
 import { ErrorState } from "@/components/error-state";
 import { cn } from "@/lib/utils";
-import tmiLogo from "@/assets/TMI.png";
-import attachmentIcon from "@/assets/attachment.svg";
-import chevronDownIcon from "@/assets/chevron-down.svg";
-import microphoneIcon from "@/assets/microphone.svg";
-import sendArrowIcon from "@/assets/send-arrow.svg";
 import {
   ActionBarMorePrimitive,
   ActionBarPrimitive,
   AuiIf,
+  AttachmentPrimitive,
   type AssistantState,
   BranchPickerPrimitive,
   ComposerPrimitive,
   MessagePrimitive,
   ThreadPrimitive,
+  useAuiEvent,
+  type ToolCallMessagePartProps,
   useAui,
   useAuiState,
 } from "@assistant-ui/react";
 import {
   ArrowDownIcon,
+  ArrowUpIcon,
   CheckIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
   CopyIcon,
   DownloadIcon,
   MoreHorizontalIcon,
+  PencilIcon,
+  PaperclipIcon,
+  FileTextIcon,
+  ImageIcon,
   RefreshCwIcon,
   SquareIcon,
+  XIcon,
 } from "lucide-react";
-import type { FC } from "react";
+import { useState, type FC } from "react";
 
 // Startup exposes a loading placeholder thread; treat it as a new chat so
 // the composer mounts centered. Loads after startup keep the docked layout.
@@ -69,56 +77,58 @@ const ThreadHistorySkeleton: FC = () => (
   </div>
 );
 
-export const Thread: FC<{ onNewChat: () => void }> = ({ onNewChat }) => {
+export const Thread: FC = () => {
   const isEmpty = useAuiState(isNewChatView);
 
   return (
     <ThreadPrimitive.Root
       className="aui-root aui-thread-root bg-background @container flex h-full min-h-0 flex-col"
       style={{
-        ["--thread-max-width" as string]: "var(--layout-content-width)",
-        ["--composer-bg" as string]: "var(--color-surface-base)",
-        ["--composer-radius" as string]: "var(--radius-composer)",
-        ["--composer-padding" as string]: "0px",
+        ["--thread-max-width" as string]: "44rem",
+        ["--composer-bg" as string]:
+          "color-mix(in oklab, var(--color-muted) 30%, transparent)",
+        ["--composer-radius" as string]: "1rem",
+        ["--composer-padding" as string]: "8px",
       }}
     >
-      <AuiIf condition={(s) => s.thread.messages.length > 0 || isHistoryLoadingView(s)}>
-        <header className="aui-conversation-header">
-          <a className="aui-conversation-brand" href="/" aria-label="Tutor home">Tutor</a>
-          <button className="aui-new-chat-button" onClick={onNewChat}>
-            <span aria-hidden="true">＋</span> New chat
-          </button>
-        </header>
-      </AuiIf>
       <ThreadPrimitive.Viewport
         turnAnchor="top"
         data-slot="aui_thread-viewport"
-        className={cn(
-          "aui-thread-viewport relative flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto scroll-smooth",
-          isEmpty ? "aui-thread-viewport-home" : "aui-thread-viewport-conversation",
-        )}
+        className="relative flex min-h-0 flex-1 flex-col overflow-x-auto overflow-y-scroll scroll-smooth"
       >
-        {isEmpty ? (
-          <div className="aui-home-content">
+        <div
+          className={cn(
+            "mx-auto flex w-full max-w-(--thread-max-width) flex-1 flex-col px-4 pt-4",
+            isEmpty && "justify-center",
+          )}
+        >
+          <AuiIf condition={isNewChatView}>
             <ThreadWelcome />
+          </AuiIf>
+          <AuiIf condition={isHistoryLoadingView}>
+            <ThreadHistorySkeleton />
+          </AuiIf>
+
+          <div
+            data-slot="aui_message-group"
+            className="mb-14 flex flex-col gap-y-6 empty:hidden"
+          >
+            <ThreadPrimitive.Messages>
+              {() => <ThreadMessage />}
+            </ThreadPrimitive.Messages>
+          </div>
+
+          <ThreadPrimitive.ViewportFooter
+            className={cn(
+              "aui-thread-viewport-footer bg-background flex flex-col gap-4 overflow-visible pb-4 md:pb-6",
+              !isEmpty &&
+                "sticky bottom-0 mt-auto rounded-t-(--composer-radius)",
+            )}
+          >
+            <ThreadScrollToBottom />
             <Composer />
-            <PromptSuggestions />
-          </div>
-        ) : (
-          <div className="aui-conversation-content">
-            <AuiIf condition={isHistoryLoadingView}>
-              <ThreadHistorySkeleton />
-            </AuiIf>
-            <div data-slot="aui_message-group" className="aui-message-group empty:hidden">
-              <ThreadPrimitive.Messages>{() => <ThreadMessage />}</ThreadPrimitive.Messages>
-            </div>
-            <ThreadPrimitive.ViewportFooter className="aui-thread-viewport-footer">
-              <ThreadScrollToBottom />
-              <Composer />
-              <p className="aui-disclaimer">Tutor can make mistakes. Check important work with your course materials.</p>
-            </ThreadPrimitive.ViewportFooter>
-          </div>
-        )}
+          </ThreadPrimitive.ViewportFooter>
+        </div>
       </ThreadPrimitive.Viewport>
     </ThreadPrimitive.Root>
   );
@@ -149,53 +159,63 @@ const ThreadScrollToBottom: FC = () => {
 
 const ThreadWelcome: FC = () => {
   return (
-    <div className="aui-thread-welcome-root">
-      <p className="aui-thread-welcome-message-inner">
+    <div className="aui-thread-welcome-root mb-6 flex flex-col px-2">
+      <p className="aui-thread-welcome-message-inner fade-in slide-in-from-bottom-1 animate-in fill-mode-both text-2xl font-medium tracking-tight duration-200">
         How can I help you today?
       </p>
     </div>
   );
 };
 
-const PromptSuggestions: FC = () => {
-  const aui = useAui();
-  const prompts = [
-    "Check my reasoning on a problem",
-    "How to study for linear algebra",
-    "Explain a concept step by step",
-    "Quiz me on derivatives",
-  ];
-
-  return (
-    <div className="aui-prompt-suggestions" aria-label="Suggested starting points">
-      {prompts.map((prompt) => (
-        <button key={prompt} type="button" onClick={() => aui.composer().setText(prompt)}>
-          {prompt}
-        </button>
-      ))}
-    </div>
-  );
-};
-
 const Composer: FC = () => {
-  const isEmpty = useAuiState(isNewChatView);
-
   return (
-    <ComposerPrimitive.Root className="aui-composer-root">
-      <div data-slot="aui_composer-shell" className="aui-composer-shell">
+    <ComposerPrimitive.Root className="aui-composer-root relative flex w-full flex-col">
+      <div
+        data-slot="aui_composer-shell"
+        className="border-foreground/10 focus-within:border-foreground/25 flex w-full cursor-text flex-col gap-2 rounded-(--composer-radius) border bg-(--composer-bg) p-(--composer-padding) transition-[border-color]"
+      >
+        <ComposerPrimitive.Attachments>
+          {({ attachment }) => (
+            <AttachmentPrimitive.Root
+              className="flex min-w-0 items-center gap-2 rounded-lg border bg-background px-2.5 py-2"
+              key={attachment.id}
+            >
+              {attachment.type === "image" ? (
+                <ImageIcon className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+              ) : (
+                <FileTextIcon className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+              )}
+              <span className="min-w-0 flex-1 truncate text-xs font-medium">
+                <AttachmentPrimitive.Name />
+              </span>
+              <AttachmentPrimitive.Remove aria-label={`Remove ${attachment.name}`}>
+                <XIcon className="size-4" />
+              </AttachmentPrimitive.Remove>
+            </AttachmentPrimitive.Root>
+          )}
+        </ComposerPrimitive.Attachments>
+        <AttachmentAddError />
         <ComposerPrimitive.Input
-          placeholder={isEmpty ? "Share a question or a step you’re unsure about…" : "Reply to your tutor…"}
-          className="aui-composer-input"
-          rows={2}
-          aria-label={isEmpty ? "Share a question or a step you’re unsure about" : "Reply to your tutor"}
+          placeholder="Message Tutor"
+          className="aui-composer-input placeholder:text-muted-foreground/60 max-h-48 min-h-10 w-full resize-none bg-transparent px-2.5 py-1 text-base leading-6 outline-none"
+          rows={1}
+          autoFocus
+          aria-label="Message Tutor"
         />
-        <ComposerControls />
+        <ComposerAction />
       </div>
     </ComposerPrimitive.Root>
   );
 };
 
-const ComposerControls: FC = () => {
+const AttachmentAddError: FC = () => {
+  const [error, setError] = useState<string | null>(null);
+  useAuiEvent("composer.attachmentAddError", ({ message }) => setError(message));
+  useAuiEvent("composer.attachmentAdd", () => setError(null));
+  return error ? <p className="px-2 text-xs text-destructive" role="alert">{error}</p> : null;
+};
+
+const ComposerAction: FC = () => {
   // Submission may be pending before the model run starts.
   const isSending = useAuiState(
     (s) =>
@@ -204,22 +224,14 @@ const ComposerControls: FC = () => {
   );
 
   return (
-    <div className="aui-composer-controls">
-      <div className="aui-composer-tools">
-        <button className="aui-composer-icon-button" type="button" disabled aria-label="Attachments are not available yet" title="Attachments are not available yet">
-          <img src={attachmentIcon} alt="" width="24" height="24" />
-        </button>
-        <div className="aui-tutor-mode" aria-label="Selected tutor: EduRL 1024, medium">
-          <img className="aui-tmi-logo" src={tmiLogo} alt="TMI" width="40" height="40" />
-          <span className="aui-tutor-mode-primary">EduRL 1024</span>
-          <span className="aui-tutor-mode-secondary">Medium</span>
-          <img className="aui-chevron" src={chevronDownIcon} alt="" width="18" height="18" />
-        </div>
-      </div>
-      <div className="aui-composer-tools">
-        <button className="aui-composer-icon-button" type="button" disabled aria-label="Voice input is not available yet" title="Voice input is not available yet">
-          <img src={microphoneIcon} alt="" width="22" height="22" />
-        </button>
+    <div className="aui-composer-action-wrapper relative flex items-center justify-end">
+      <div className="flex w-full items-center justify-between gap-1.5 px-1">
+        <ComposerPrimitive.AddAttachment asChild>
+          <TooltipIconButton tooltip="Attach a PDF or image" aria-label="Attach a PDF or image">
+            <PaperclipIcon />
+          </TooltipIconButton>
+        </ComposerPrimitive.AddAttachment>
+        <div className="flex items-center gap-1.5">
         <AuiIf
           condition={(s) =>
             !s.composer.canCancel ||
@@ -229,15 +241,15 @@ const ComposerControls: FC = () => {
         >
           <ComposerPrimitive.Send asChild>
             <TooltipIconButton
-              tooltip="Send to your tutor"
+              tooltip="Send message"
               side="bottom"
               type="button"
               variant="default"
               size="icon"
-              className="aui-composer-send"
-              aria-label="Send to your tutor"
+              className="aui-composer-send size-7 rounded-full"
+              aria-label="Send message"
             >
-              <img src={sendArrowIcon} alt="" width="22" height="22" />
+              <ArrowUpIcon className="aui-composer-send-icon size-4" />
             </TooltipIconButton>
           </ComposerPrimitive.Send>
         </AuiIf>
@@ -253,13 +265,14 @@ const ComposerControls: FC = () => {
               type="button"
               variant="default"
               size="icon"
-              className="aui-composer-cancel"
+              className="aui-composer-cancel size-7 rounded-full"
               aria-label={isSending ? "Cancel sending" : "Stop generating"}
             >
-              <SquareIcon className="aui-composer-cancel-icon size-4 fill-current" />
+              <SquareIcon className="aui-composer-cancel-icon size-3.5 fill-current" />
             </Button>
           </ComposerPrimitive.Cancel>
         </AuiIf>
+        </div>
       </div>
     </div>
   );
@@ -273,18 +286,20 @@ const AssistantMessage: FC = () => {
     <MessagePrimitive.Root
       data-slot="aui_assistant-message-root"
       data-role="assistant"
-      className="fade-in slide-in-from-bottom-1 animate-in relative -mb-7.5 pb-7.5 duration-150 [contain-intrinsic-size:auto_200px] [content-visibility:auto]"
+      className="group/message-root fade-in slide-in-from-bottom-1 animate-in relative -mb-7.5 pb-7.5 duration-150"
     >
+      <MessageDaySeparator />
       <div
         data-slot="aui_assistant-message-content"
         className="text-foreground px-2 leading-relaxed wrap-break-word"
       >
-        <MessagePrimitive.Parts>
-          {({ part }) => {
-            if (part.type === "text") return <MarkdownText />;
-            return null;
+        <MessageTimestamp />
+        <MessagePrimitive.Parts
+          components={{
+            Text: MarkdownText,
+            tools: { by_name: { load_skill: SkillToolStatus } },
           }}
-        </MessagePrimitive.Parts>
+        />
         <AuiIf
           condition={(s) =>
             s.message.status?.type === "running" && s.message.parts.length === 0
@@ -292,15 +307,18 @@ const AssistantMessage: FC = () => {
         >
           <span
             data-slot="aui_assistant-message-indicator"
-            className="animate-pulse font-sans"
+            role="status"
             aria-label="Assistant is working"
+            className="inline-flex items-center gap-1 px-2 py-1"
           >
-            {"●"}
+            <span className="size-1 animate-bounce rounded-full bg-current [animation-delay:-0.3s] motion-reduce:animate-none" />
+            <span className="size-1 animate-bounce rounded-full bg-current [animation-delay:-0.15s] motion-reduce:animate-none" />
+            <span className="size-1 animate-bounce rounded-full bg-current motion-reduce:animate-none" />
           </span>
         </AuiIf>
-
-        <AssistantError />
       </div>
+
+      <AssistantError />
 
       <div
         data-slot="aui_assistant-message-footer"
@@ -312,6 +330,15 @@ const AssistantMessage: FC = () => {
     </MessagePrimitive.Root>
   );
 };
+
+const SkillToolStatus: FC<ToolCallMessagePartProps<{ name?: string }, { loaded: boolean }>> = ({
+  args, result, status,
+}) => (
+  <p role="status" className="my-2 text-sm text-muted-foreground">
+    {result?.loaded ? "Loaded skill" : result?.loaded === false || status.type === "incomplete"
+      ? "Skill not loaded" : "Loading skill"}: <span className="font-medium">{args.name || "…"}</span>
+  </p>
+);
 
 const AssistantError: FC = () => {
   const aui = useAui();
@@ -348,23 +375,21 @@ const AssistantActionBar: FC = () => {
     <ActionBarPrimitive.Root
       hideWhenRunning
       autohide="never"
-      className="aui-assistant-action-bar-root text-muted-foreground animate-in fade-in col-start-3 row-start-2 -ms-1 flex gap-1 duration-200"
+      className="aui-assistant-action-bar-root text-muted-foreground col-start-3 row-start-2 -ms-1 flex gap-1 opacity-0 transition-opacity duration-200 group-hover/message-root:pointer-events-auto group-hover/message-root:opacity-100 group-focus-within/message-root:pointer-events-auto group-focus-within/message-root:opacity-100 pointer-events-none"
     >
       <ActionBarPrimitive.Copy asChild>
-        <TooltipIconButton tooltip="Copy response" className="aui-message-action">
+        <TooltipIconButton tooltip="Copy response">
           <AuiIf condition={(s) => s.message.isCopied}>
             <CheckIcon className="animate-in zoom-in-50 fade-in duration-200 ease-out" />
           </AuiIf>
           <AuiIf condition={(s) => !s.message.isCopied}>
             <CopyIcon className="animate-in zoom-in-75 fade-in duration-150" />
           </AuiIf>
-          <span aria-hidden="true">Copy</span>
         </TooltipIconButton>
       </ActionBarPrimitive.Copy>
       <ActionBarPrimitive.Reload asChild>
-        <TooltipIconButton tooltip="Regenerate response" className="aui-message-action">
+        <TooltipIconButton tooltip="Regenerate response">
           <RefreshCwIcon />
-          <span aria-hidden="true">Regenerate</span>
         </TooltipIconButton>
       </ActionBarPrimitive.Reload>
       <ActionBarMorePrimitive.Root>
@@ -398,12 +423,30 @@ const UserMessage: FC = () => {
   return (
     <MessagePrimitive.Root
       data-slot="aui_user-message-root"
-      className="fade-in slide-in-from-bottom-1 animate-in grid auto-rows-auto grid-cols-[minmax(72px,1fr)_auto] content-start gap-y-2 px-2 duration-150 [contain-intrinsic-size:auto_200px] [content-visibility:auto] [&:where(>*)]:col-start-2"
+      className="group/message-root fade-in slide-in-from-bottom-1 animate-in grid auto-rows-auto grid-cols-[minmax(72px,1fr)_auto] content-start gap-y-2 px-2 duration-150 [&:where(>*)]:col-start-2"
       data-role="user"
     >
+      <MessageDaySeparator />
       <div className="aui-user-message-content-wrapper relative col-start-2 min-w-0">
         <div className="aui-user-message-content peer bg-muted text-foreground rounded-(--composer-radius) px-4 py-2 wrap-break-word empty:hidden">
           <MessagePrimitive.Parts />
+        </div>
+        <MessageTimestamp align="end" />
+        <MessagePrimitive.Attachments>
+          {({ attachment }) => (
+            <a
+              href={`/api/attachments/${encodeURIComponent(attachment.id)}`}
+              target="_blank"
+              rel="noreferrer"
+              className="mt-2 flex max-w-64 items-center gap-2 rounded-lg border bg-background p-2 text-xs hover:bg-muted"
+            >
+              {attachment.type === "image" ? <ImageIcon className="size-4" /> : <FileTextIcon className="size-4" />}
+              <span className="min-w-0 truncate">{attachment.name}</span>
+            </a>
+          )}
+        </MessagePrimitive.Attachments>
+        <div className="aui-user-action-bar-wrapper pointer-events-none absolute start-0 top-1/2 -translate-x-full -translate-y-1/2 pe-2 opacity-0 transition-opacity group-focus-within/message-root:pointer-events-auto group-focus-within/message-root:opacity-100 group-hover/message-root:pointer-events-auto group-hover/message-root:opacity-100 peer-empty:hidden rtl:translate-x-full">
+          <UserActionBar />
         </div>
       </div>
 
@@ -412,6 +455,22 @@ const UserMessage: FC = () => {
         className="col-span-full col-start-1 -me-1 justify-end"
       />
     </MessagePrimitive.Root>
+  );
+};
+
+const UserActionBar: FC = () => {
+  return (
+    <ActionBarPrimitive.Root
+      hideWhenRunning
+      autohide="never"
+      className="aui-user-action-bar-root flex flex-col items-end"
+    >
+      <ActionBarPrimitive.Edit asChild>
+        <TooltipIconButton tooltip="Edit message" className="aui-user-action-edit">
+          <PencilIcon />
+        </TooltipIconButton>
+      </ActionBarPrimitive.Edit>
+    </ActionBarPrimitive.Root>
   );
 };
 
