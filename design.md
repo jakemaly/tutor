@@ -23,7 +23,7 @@ Use plain, respectful language and adult visual tone. Make keyboard use, visible
 
 Credibility comes from transparent tutoring behavior and calibrated claims, not a lab coat, avatar, authority badge, or polished gradients. A compact “How I tutor” explanation can set expectations: the tutor will look at the student’s reasoning and begin with a small hint. Show course sources when the tutor uses them, state uncertainty where it matters, and make it easy to ask for a check or a more direct explanation.
 
-Keep the basic chatbot hierarchy because students already know how to read it: student contribution on the right, tutor response on the left, composer at the bottom. Differentiate through the tutor’s response structure and visual language. In this baseline, Alike is reserved for the welcoming home heading; SF Pro or the platform UI sans-serif is used for controls and conversation text. The distinction adds warmth without making technical explanations harder to scan.
+Keep the basic chatbot hierarchy because students already know how to read it: student contribution on the right, tutor response on the left, composer at the bottom. Differentiate through the tutor’s response structure and visual language. Alike is reserved for the welcoming home heading. Controls and conversation text use SF Pro where available and Inter as the web fallback. The distinction adds warmth without making technical explanations harder to scan.
 
 ### 3. Value beyond a general chatbot
 
@@ -90,7 +90,7 @@ Teal and coral identify the TMI mark; they are not tutor/student role colors or 
 | `TMI/Meta/Action` | SF Pro Regular | 14 / 20 px | Message actions |
 | `TMI/Meta/Disclaimer` | SF Pro Regular | 12 / 16 px | Accuracy note |
 
-The web app self-hosts Alike for the display face under the SIL Open Font License 1.1. The font’s copyright notice and full license are reproduced in the appendix below. Conversation UI uses the native system sans-serif stack, which resolves to SF Pro on Apple platforms, Segoe UI on Windows, and `system-ui` on Linux. Equations and code use a monospace face only where their content requires it.
+The web app self-hosts Alike for the display face under the SIL Open Font License 1.1. The font’s copyright notice and full license are reproduced in the appendix below. SF Pro is the reference face for the conversation UI. The app uses the native Apple system font when available and self-hosts Inter 4.1 in regular and italic styles for other platforms. Equations and code use a monospace face only where their content requires it. [Inter release](https://github.com/rsms/inter/releases/tag/v4.1) · [Inter license](frontend/public/fonts/Inter-OFL.txt)
 
 ### Layout and shape
 
