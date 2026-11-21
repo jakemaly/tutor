@@ -1,10 +1,8 @@
-# TMI Tutor — design and styling
+# TMI Tutor design and styling
 
-**Status:** baseline styling set, v1
-**Reference:** [TMI Tutor Figma baseline](https://www.figma.com/design/x7LLfyTdIFuzYc9kp1lUWz/Math-Tutor-Chatbot-UI?node-id=31-211)
-**Figma foundations:** [`TMI Foundations` page](https://www.figma.com/design/x7LLfyTdIFuzYc9kp1lUWz/Math-Tutor-Chatbot-UI?node-id=56-53) · `TMI Core` variable collection
+The home and conversation screens are designed for tutoring across subjects. The Figma references show the landing layout, a sample conversation, and the shared color and typography tokens. [Landing screen](https://www.figma.com/design/x7LLfyTdIFuzYc9kp1lUWz/Tutor-Chatbot-UI?node-id=2-29) · [Conversation screen](https://www.figma.com/design/x7LLfyTdIFuzYc9kp1lUWz/Tutor-Chatbot-UI?node-id=31-212) · [Styling sheet](https://www.figma.com/design/x7LLfyTdIFuzYc9kp1lUWz/Tutor-Chatbot-UI?node-id=56-53)
 
-This document records the decisions behind the current home and conversation screens. The familiar assistant-ui chat shell is the starting point; the product’s identity comes from how the tutor helps students think, not from replacing standard chat conventions with an unfamiliar interface.
+The app uses assistant-ui for the conversational flow. Its visual hierarchy makes it easy for students to share what they tried, read a response, and continue with a follow-up.
 
 ## Design position
 
@@ -29,7 +27,7 @@ Keep the basic chatbot hierarchy because students already know how to read it: s
 
 ### 3. Value beyond a general chatbot
 
-Use the interface to invite active work instead of presenting a broad blank prompt alone. The selected home screen’s suggested starts (“Check my reasoning,” “Explain a concept step by step,” “Quiz me on derivatives”) communicate useful study actions. Over time, make these adaptable to the active subject and context rather than generic task chips.
+The home screen offers four ways to begin. Students can check their reasoning, make a study plan, explore a concept step by step, or ask for a quiz. Each suggestion fills the composer so the student can add a topic or context before sending it.
 
 Useful product-specific controls to explore:
 
@@ -68,8 +66,7 @@ The app tokens live in [`frontend/src/design-tokens.css`](frontend/src/design-to
 | `color/text/secondary` | `#757575` | Placeholder, action, and metadata text |
 | `color/border/default` | `#D6D6D6` | Composer and control outlines |
 | `color/border/subtle` | `#E1E1E1` | Quiet outlines on the home state |
-| `color/action/neutral` | `#A6A6A6` | Send control background; use a dark icon for contrast |
-| `color/action/neutral-hover` | `#969696` | Send control hover |
+| `color/action/neutral` | `#A6A6A6` | Disabled send control background |
 | `color/focus` | `#006D77` | Keyboard focus outline |
 | `color/brand/teal` | `#10A9BA` | TMI mark and restrained brand accents |
 | `color/brand/coral` | `#FF5A3C` | TMI mark and restrained brand accents |
@@ -89,9 +86,7 @@ Teal and coral identify the TMI mark; they are not tutor/student role colors or 
 | `TMI/Composer/Placeholder` | SF Pro Regular | 22 / 31 px | Composer placeholder |
 | `TMI/Control/Prompt` | SF Pro Regular | 18 / 25.2 px | Suggested prompt |
 | `TMI/Control/Brand` | SF Pro Semibold | 19 / 25 px | App name |
-| `TMI/Control/Model` | SF Pro Semibold | 18 / 25 px | Selected model |
 | `TMI/Control/Secondary` | SF Pro Medium | 14 / 20 px | Secondary control labels |
-| `TMI/Meta/ModelDetail` | SF Pro Regular | 16 / 22 px | Reasoning level or model detail |
 | `TMI/Meta/Action` | SF Pro Regular | 14 / 20 px | Message actions |
 | `TMI/Meta/Disclaimer` | SF Pro Regular | 12 / 16 px | Accuracy note |
 
@@ -126,9 +121,11 @@ Keep the message column comfortable to read and the composer anchored below the 
 
 Only the first two are visual styling decisions in the current baseline. The handoff and generated work artifacts are interaction patterns to prototype next; the current app does not yet implement them.
 
-## Baseline fidelity and current implementation
+## Screen behavior
 
-The selected Figma pair is the source for the type hierarchy, whitespace, neutral student bubble, rounded composer, and home copy. The React app keeps its existing assistant-ui structure and API behavior. It adopts the shared styling tokens and distinct home/conversation composer prompts. The model picker and prompt suggestion components visible in Figma remain design references and are not implemented by this styling pass.
+The home screen centers the heading, composer, and two rows of suggestions. Once a student sends a message, the conversation header appears and the composer stays at the bottom. Students can open chat history from the header or from the landing screen after starting their first chat.
+
+The composer displays the Tutor identity for the configured model. In both states, the plus button accepts a PDF or image. The microphone is shown as disabled. The send button gives way to a stop button while the tutor is replying.
 
 ## Third-party font license
 

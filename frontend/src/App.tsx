@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import {
   AssistantRuntimeProvider,
   useAui,
+  useAuiState,
   useRemoteThreadListRuntime,
 } from "@assistant-ui/react";
 import { useDataStreamRuntime } from "@assistant-ui/react-data-stream";
@@ -16,6 +17,7 @@ import {
   SidebarInset,
   SidebarProvider,
   SidebarTrigger,
+  useSidebar,
 } from "@/components/ui/sidebar";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
@@ -53,20 +55,10 @@ export default function App() {
   return (
     <AssistantRuntimeProvider runtime={runtime}>
       <TooltipProvider>
-        <SidebarProvider className="app-shell">
+        <SidebarProvider className="app-shell" defaultOpen={false}>
           <ThreadListSidebar />
           <SidebarInset className="app-main">
-            <header className="topbar">
-              <div className="topbar-leading">
-                <SidebarTrigger aria-label="Toggle conversation list" />
-                <a className="brand" href="/" aria-label="Tutor home">
-                  Tutor
-                </a>
-              </div>
-              <button className="new-chat-button" onClick={startNewChat}>
-                <span aria-hidden="true">＋</span> New chat
-              </button>
-            </header>
+            <ChatHeader onNewChat={startNewChat} />
             {error && (
               <div className="error-banner" role="alert">
                 <span>{error}</span>
@@ -86,6 +78,37 @@ export default function App() {
         </SidebarProvider>
       </TooltipProvider>
     </AssistantRuntimeProvider>
+  );
+}
+
+function ChatHeader({ onNewChat }: { onNewChat: () => void }) {
+  const hasMessages = useAuiState((state) => state.thread.messages.length > 0);
+  const hasHistory = useAuiState(
+    (state) => state.threads.threadIds.length > 0 || state.threads.archivedThreadIds.length > 0,
+  );
+  const { open, openMobile, isMobile } = useSidebar();
+
+  if (!hasMessages && !hasHistory && !open && !openMobile) return null;
+
+  const historyButton = (
+    <SidebarTrigger
+      aria-label="Toggle conversation list"
+      aria-expanded={isMobile ? openMobile : open}
+    />
+  );
+
+  if (!hasMessages) return <div className="home-history-trigger">{historyButton}</div>;
+
+  return (
+    <header className="topbar">
+      <div className="topbar-leading">
+        <a className="brand" href="/" aria-label="Tutor home">Tutor</a>
+        {historyButton}
+      </div>
+      <button className="new-chat-button" type="button" onClick={onNewChat}>
+        <span aria-hidden="true">＋</span> New chat
+      </button>
+    </header>
   );
 }
 
