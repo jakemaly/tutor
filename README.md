@@ -31,7 +31,7 @@ The chat accepts PDF, JPEG, PNG, and WebP files up to 10 MB. PDFs are text-extra
 
 ## Study elements and previews
 
-Ask for a flashcard, multiple-choice, true/false, or multi-select question to get an interactive native study element. Submitted choices are sent as a learner turn so the tutor can respond. HTML previews are available only when requested and render in Safe Content Frame, isolated from the app's DOM and origin.
+Ask for a flashcard, multiple-choice, true/false, or multi-select question to get an interactive native study element. Submitted choices are graded inline; requests for multiple items appear together in a navigable study deck. HTML previews are available only when requested and render in Safe Content Frame, isolated from the app's DOM and origin.
 
 ## Checks
 

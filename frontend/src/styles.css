@@ -124,6 +124,7 @@ html, body, #root { width: 100%; min-width: 320px; height: 100%; margin: 0; }
   border-radius: 16px;
   background: color-mix(in oklab, var(--muted) 32%, var(--background));
 }
+.study-item { display: grid; gap: 12px; }
 .study-question { display: grid; gap: 10px; min-width: 0; border: 0; padding: 0; }
 .study-question legend { margin-bottom: 12px; font-weight: 650; }
 .study-option {
@@ -146,8 +147,36 @@ html, body, #root { width: 100%; min-width: 320px; height: 100%; margin: 0; }
   color: var(--primary-foreground);
 }
 .study-submit:disabled { cursor: not-allowed; opacity: 0.55; }
-.study-tool-status, .study-element-hint { color: var(--muted-foreground); font-size: 0.8rem; }
+.study-tool-status, .study-element-hint, .study-set-header span {
+  color: var(--muted-foreground);
+  font-size: 0.8rem;
+}
 .study-tool-error { color: #a33b2c; font-size: 0.85rem; }
+.study-feedback {
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--background);
+  font-size: 0.88rem;
+}
+.study-feedback p { margin: 8px 0 0; }
+.study-feedback.is-correct { border-color: #9ac6a0; }
+.study-feedback.is-incorrect { border-color: #e6b29f; }
+.study-set-header, .study-set-navigation {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.study-set-header h3 { margin: 0; font-size: 1rem; }
+.study-set-navigation button {
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 17px;
+  background: var(--background);
+}
+.study-set-navigation button:disabled { cursor: not-allowed; opacity: 0.5; }
 .study-flashcard {
   display: grid;
   width: 100%;

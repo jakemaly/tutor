@@ -32,7 +32,12 @@ from app.models import create_chat_model
 
 logger = logging.getLogger(__name__)
 MAX_ATTACHMENT_STORAGE_BYTES = 100 * 1024 * 1024
-BACKEND_TOOL_NAMES = {"load_skill", "present_study_element", "present_html_preview"}
+BACKEND_TOOL_NAMES = {
+    "load_skill",
+    "present_study_element",
+    "present_study_elements",
+    "present_html_preview",
+}
 CITATION_PREFIX = "[[cite:"
 CITATION_PATTERN = re.compile(r"\[\[cite:([0-9a-fA-F-]{36}):(\d+)\]\]")
 CITATION_STOP_WORDS = {

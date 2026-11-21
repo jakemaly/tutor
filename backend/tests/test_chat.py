@@ -818,6 +818,7 @@ def test_study_element_tool_is_streamed_to_the_native_ui() -> None:
     args = {
         "kind": "mcq",
         "question": "Where does photosynthesis occur?",
+        "correct_option_ids": ["a"],
         "options": [
             {"id": "a", "label": "Chloroplast"},
             {"id": "b", "label": "Mitochondrion"},
@@ -889,7 +890,12 @@ def test_study_element_tool_is_streamed_to_the_native_ui() -> None:
 
     assert response.status_code == 200
     tool_names = {tool["function"]["name"] for tool in requests[0]["tools"]}
-    assert {"load_skill", "present_study_element", "present_html_preview"} <= tool_names
+    assert {
+        "load_skill",
+        "present_study_element",
+        "present_study_elements",
+        "present_html_preview",
+    } <= tool_names
     assert requests[1]["messages"][-1]["role"] == "tool"
     assert json.loads(requests[1]["messages"][-1]["content"]) == {"presented": True}
 

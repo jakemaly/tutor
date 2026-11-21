@@ -8,7 +8,11 @@ from langgraph.graph import START, MessagesState, StateGraph
 from langgraph.prebuilt import ToolNode, tools_condition
 
 from app.skills import build_system_prompt, discover_skills, make_load_skill
-from app.study_elements import make_present_html_preview, make_present_study_element
+from app.study_elements import (
+    make_present_html_preview,
+    make_present_study_element,
+    make_present_study_elements,
+)
 
 SKILLS = discover_skills()
 SYSTEM_PROMPT = (
@@ -22,11 +26,14 @@ emit citation markers when no attached source supports the claim."""
 )
 SYSTEM_PROMPT += """
 
-For flashcards and practice questions, call present_study_element so the learner gets
-the native interactive UI. Use only its supported study element kinds. Call
-present_html_preview only when the learner explicitly requests a visual HTML preview;
-all generated HTML must go through that isolated preview tool, never into application
-markup or a markdown code path."""
+For one flashcard or practice question, call present_study_element. For a requested set
+of two or more, call present_study_elements once with all items so they appear together
+in a navigable study deck. Use only the supported study element kinds, include correct
+option IDs for every question, and add a concise explanation when helpful. Answers are
+graded in the card; do not expect or request another learner turn. Call present_html_preview
+only when the learner explicitly requests a visual HTML preview; all generated HTML
+must go through that isolated preview tool, never into application markup or a markdown
+code path."""
 
 
 def create_graph(model: BaseChatModel):
@@ -34,6 +41,7 @@ def create_graph(model: BaseChatModel):
     tools = [
         make_load_skill(SKILLS),
         make_present_study_element(),
+        make_present_study_elements(),
         make_present_html_preview(),
     ]
     # LCEL formats the prompt, then passes its messages to the configured model.
