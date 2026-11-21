@@ -7,7 +7,7 @@ import json
 import logging
 import re
 from typing import Any
-from urllib.parse import quote, unquote
+from urllib.parse import quote, unquote, urlparse
 from uuid import UUID
 
 # These libraries adapt the browser stream, define HTTP routes, and represent model messages.
@@ -34,6 +34,9 @@ logger = logging.getLogger(__name__)
 MAX_ATTACHMENT_STORAGE_BYTES = 100 * 1024 * 1024
 CITATION_PREFIX = "[[cite:"
 CITATION_PATTERN = re.compile(r"\[\[cite:([0-9a-fA-F-]{36}):(\d+)\]\]")
+UI_ONLY_TOOLS = {"load_skill", "web_search"}
+WEB_PATTERN = re.compile(r"\[\[web:([0-9a-f]{8})\]\]")
+MARKER_PREFIXES = (CITATION_PREFIX, "[[web:")
 CITATION_STOP_WORDS = {
     "about",
     "also",
@@ -98,7 +101,7 @@ def _message_text(message: dict[str, Any]) -> str:
                 if not (
                     isinstance(part, dict)
                     and part.get("type") == "tool-call"
-                    and part.get("toolName") == "load_skill"
+                    and part.get("toolName") in UI_ONLY_TOOLS
                 )
             ]
         if any(
@@ -133,7 +136,7 @@ def _messages_for_graph(
             and all(
                 isinstance(part, dict)
                 and part.get("type") == "tool-result"
-                and part.get("toolName") == "load_skill"
+                and part.get("toolName") in UI_ONLY_TOOLS
                 for part in content
             )
         ):
@@ -227,7 +230,7 @@ def _next_citation_segment(text: str, final: bool) -> tuple[str, str] | None:
             return text, ""
         marker_prefix = len(remainder) - len(remainder.lstrip())
         citation_start = end + marker_prefix
-        if text[citation_start:].startswith(CITATION_PREFIX):
+        if text[citation_start:].startswith(MARKER_PREFIXES):
             citation_end = text.find("]]", citation_start)
             if citation_end < 0 and not final:
                 return None
@@ -357,6 +360,17 @@ def _text_from_chunk(chunk: AIMessageChunk) -> str:
         )
     return ""
 
+def _render_web_markers(text: str, web_sources: dict[str, dict[str, str]]) -> str:
+    """Turn [[web:ID]] into a link, but only for sources returned in this run."""
+    def replace(match: re.Match[str]) -> str:
+        source = web_sources.get(match.group(1).lower())
+        if source is None:
+            return "[source unavailable]"
+        title = source["title"].replace("[", "(").replace("]", ")")
+        host = urlparse(source["url"]).netloc.removeprefix("www.")
+        return f'[{host}]({source["url"]} "web-citation")'
+    text = WEB_PATTERN.sub(replace, text)
+    return re.sub(r"\[\[web:[^\]]*\]\]", "[source unavailable]", text)
 
 async def _stream_graph(
     graph: Any,
@@ -369,18 +383,21 @@ async def _stream_graph(
     calls = {}
     pending = ""
     cited_links: list[str] = []
+    web_sources: dict[str, dict[str, str]] = {}
 
     def append_text(text: str, final: bool = False) -> None:
         nonlocal pending
-        if not allowed_ids:
+        if not allowed_ids and not web_sources:
             controller.append_text(text)
             return
         pending += text
         while (segment := _next_citation_segment(pending, final=final)) is not None:
             complete, pending = segment
-            controller.append_text(
-                _render_cited_segment(complete, sources, allowed_ids, cited_links)
-            )
+            had_web = bool(WEB_PATTERN.search(complete))
+            complete = _render_web_markers(complete, web_sources)
+            if allowed_ids and (not had_web or CITATION_PREFIX in complete):
+                complete = _render_cited_segment(complete, sources, allowed_ids, cited_links)
+            controller.append_text(complete)
 
     async for mode, payload in graph.astream(
         {"messages": messages}, stream_mode=["messages", "updates"]
@@ -398,15 +415,26 @@ async def _stream_graph(
                 for message in update.get("messages", []):
                     if isinstance(message, AIMessage):
                         for call in message.tool_calls:
-                            if call["name"] == "load_skill":
-                                tool = await controller.add_tool_call("load_skill", call["id"])
+                            if call["name"] in UI_ONLY_TOOLS:
+                                tool = await controller.add_tool_call(call["name"], call["id"])
                                 tool.append_args_text(json.dumps(call["args"]))
                                 calls[call["id"]] = tool
                     elif isinstance(message, ToolMessage) and message.tool_call_id in calls:
                         failed = message.status == "error"
-                        calls.pop(message.tool_call_id).set_response(
-                            {"loaded": not failed}, is_error=failed
-                        )
+                        if message.name == "web_search":
+                            artifact = message.artifact if isinstance(message.artifact, list) else []
+                            for source in artifact:
+                                existing = web_sources.get(source["id"])
+                                if existing is None or existing["url"] == source["url"]:
+                                    web_sources[source["id"]] = source
+                            response = {
+                                "results": [{"title": s["title"], "url": s["url"]} for s in artifact],
+                                "skipped": message.artifact is None and not failed,
+                            }
+                        else:
+                            response = {"loaded": not failed}
+                        calls.pop(message.tool_call_id).set_response(response, is_error=failed)
+                        
     append_text("", final=True)
     if cited_links:
         controller.append_text("\n\n**Sources:** " + " · ".join(dict.fromkeys(cited_links)))
@@ -416,7 +444,7 @@ def create_app(settings: Settings | None = None, model: BaseChatModel | None = N
     """Create an app, allowing tests and other integrations to inject a chat model."""
     app_settings = settings or Settings()
     # Tests can inject a fake model; normal startup waits until the first configured chat request.
-    graph = create_graph(model) if model is not None else None
+    graph = create_graph(model, app_settings) if model is not None else None
 
     app = FastAPI(title="Tutor API", version="0.1.0")
     app.state.settings = app_settings
@@ -510,7 +538,7 @@ def create_app(settings: Settings | None = None, model: BaseChatModel | None = N
                     detail="Configure LLM_BASE_URL and LLM_MODEL in .env, then restart the app.",
                 )
             # Build lazily so health/UI still work without credentials, then reuse the graph.
-            selected_graph = create_graph(create_chat_model(app_settings))
+            selected_graph = create_graph(create_chat_model(app_settings), app_settings)
             app.state.graph = selected_graph
 
         input_messages = _messages_for_graph(request.messages, app.state.sources)

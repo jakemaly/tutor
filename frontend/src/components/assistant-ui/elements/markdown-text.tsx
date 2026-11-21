@@ -20,6 +20,8 @@ import { TooltipIconButton } from "@/components/assistant-ui/elements/tooltip-ic
 import { useCopyToClipboard } from "@/hooks/use-copy-to-clipboard";
 import { cn } from "@/lib/utils";
 import { SyntaxHighlighter } from "@/shiki-highlighter";
+import { WebCitationChip } from "@/components/assistant-ui/elements/citations";
+
 
 type MarkdownNode = {
   type: string;
@@ -190,15 +192,29 @@ const defaultComponents = memoizeMarkdownComponents({
       {...props}
     />
   ),
-  a: ({ className, ...props }) => (
-    <a
-      className={cn(
-        "aui-md-a text-primary hover:text-primary/80 underline underline-offset-2",
-        className,
-      )}
-      {...props}
-    />
-  ),
+
+  a: ({ className, href, title, children, ...props }) => {
+    const external = typeof href === "string" && /^https?:\/\//i.test(href);
+
+    if (external && title === "web-citation") {
+      return <WebCitationChip href={href}>{children}</WebCitationChip>;
+    }
+
+    return (
+      <a
+        href={href}
+        title={title}
+        className={cn(
+          "aui-md-a text-primary hover:text-primary/80 underline underline-offset-2",
+          className,
+        )}
+        {...(external ? { target: "_blank", rel: "noopener noreferrer" } : {})}
+        {...props}
+      >
+        {children}
+      </a>
+    );
+  },
   blockquote: ({ className, ...props }) => (
     <blockquote
       className={cn(

@@ -38,6 +38,7 @@ import {
   RefreshCwIcon,
   SquareIcon,
   XIcon,
+  GlobeIcon,
 } from "lucide-react";
 import { useState, type FC } from "react";
 
@@ -297,13 +298,16 @@ const AssistantMessage: FC = () => {
         <MessagePrimitive.Parts
           components={{
             Text: MarkdownText,
-            tools: { by_name: { load_skill: SkillToolStatus } },
+            tools: { by_name: { load_skill: SkillToolStatus, web_search: WebSearchToolStatus } },
           }}
         />
         <AuiIf
-          condition={(s) =>
-            s.message.status?.type === "running" && s.message.parts.length === 0
-          }
+          condition={(s) => {
+            if (s.message.status?.type !== "running") return false;
+            const last = s.message.parts[s.message.parts.length - 1];
+            return !last || last.type !== "text";
+          }}
+
         >
           <span
             data-slot="aui_assistant-message-indicator"
@@ -339,6 +343,46 @@ const SkillToolStatus: FC<ToolCallMessagePartProps<{ name?: string }, { loaded: 
       ? "Skill not loaded" : "Loading skill"}: <span className="font-medium">{args.name || "…"}</span>
   </p>
 );
+
+type SearchResult = { title: string; url: string };
+
+const WebSearchToolStatus: FC<
+  ToolCallMessagePartProps<
+    { query?: string },
+    { results: SearchResult[]; skipped?: boolean }
+  >
+> = ({ args, result, status, isError }) =>
+  result?.skipped ? null : (
+    <div role="status" className="my-2 text-sm text-muted-foreground">
+      <p className="flex items-center gap-1.5">
+        <GlobeIcon className="size-3.5 shrink-0" aria-hidden="true" />
+        <span>
+          {isError || status.type === "incomplete"
+            ? "Search failed"
+            : result
+              ? "Searched"
+              : "Searching"}
+          : <span className="font-medium">{args.query || "…"}</span>
+        </span>
+      </p>
+      {result?.results?.length ? (
+        <ul className="mt-1 ms-5 flex list-disc flex-col gap-0.5">
+          {result.results.map((r) => (
+            <li key={r.url} className="truncate">
+              <a
+                href={r.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="hover:text-foreground underline underline-offset-2"
+              >
+                {r.title}
+              </a>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
+  );
 
 const AssistantError: FC = () => {
   const aui = useAui();
