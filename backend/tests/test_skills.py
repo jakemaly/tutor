@@ -5,15 +5,15 @@ from pathlib import Path
 import pytest
 from langchain_core.tools import ToolException
 
-from app.graph import SYSTEM_PROMPT
+from app.graph import BASE_SYSTEM_PROMPT
 from app.skills import SKILLS_DIR, build_system_prompt, discover_skills, make_load_skill
 
 
 def test_default_skill_is_preloaded_but_second_skill_is_catalog_only() -> None:
     skills = discover_skills()
-    assert skills["socratic-questioning"].instructions in SYSTEM_PROMPT
-    assert "worked-example (invocation only):" in SYSTEM_PROMPT
-    assert skills["worked-example"].instructions not in SYSTEM_PROMPT
+    assert skills["socratic-questioning"].instructions in BASE_SYSTEM_PROMPT
+    assert "worked-example (invocation only):" in BASE_SYSTEM_PROMPT
+    assert skills["worked-example"].instructions not in BASE_SYSTEM_PROMPT
     assert skills["worked-example"].instructions in make_load_skill(skills).invoke(
         {"name": "worked-example"}
     )
@@ -52,7 +52,7 @@ def test_preload_requires_a_yaml_boolean(tmp_path: Path, value: str) -> None:
     (folder / "SKILL.md").write_text(
         f"---\nname: broken\ndescription: Example.\npreload: {value}\n---\nInstructions."
     )
-    with pytest.raises(ValueError, match="Invalid skill.*broken/SKILL.md"):
+    with pytest.raises(ValueError, match=r"Invalid skill.*broken[/\\]SKILL\.md"):
         discover_skills(tmp_path)
 
 
@@ -60,7 +60,7 @@ def test_malformed_skill_identifies_the_file(tmp_path: Path) -> None:
     folder = tmp_path / "broken"
     folder.mkdir()
     (folder / "SKILL.md").write_text("Missing frontmatter")
-    with pytest.raises(ValueError, match="Invalid skill.*broken/SKILL.md"):
+    with pytest.raises(ValueError, match=r"Invalid skill.*broken[/\\]SKILL\.md"):
         discover_skills(tmp_path)
 
 
