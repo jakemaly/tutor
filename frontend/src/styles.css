@@ -112,73 +112,7 @@ html, body, #root { width: 100%; min-width: 320px; height: 100%; margin: 0; }
   outline-offset: 2px;
 }
 
-.topbar-actions { display: flex; align-items: center; gap: 8px; }
-.workspace-split { display: flex; min-height: 0; flex: 1; }
-.chat-panel { display: flex; min-width: 0; min-height: 0; flex: 1; flex-direction: column; }
-.chat-panel[hidden] { display: none; }
-.whiteboard-panel {
-  display: flex;
-  min-width: 0;
-  min-height: 0;
-  flex: 1;
-  flex-direction: column;
-}
-.whiteboard-loading { align-items: center; justify-content: center; color: var(--muted-foreground); }
-.whiteboard-canvas { position: relative; min-height: 0; flex: 1; }
-.whiteboard-dots { display: block; width: 100%; height: 100%; fill: var(--tl-color-text); opacity: 0.18; }
-/* Phone-width boards: the tool bar collapses into one top-left button below the menu panel. */
-.whiteboard-mobile-toolbar {
-  position: absolute;
-  top: 52px;
-  left: var(--tl-space-3);
-  z-index: var(--tl-layer-panels);
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 4px;
-  pointer-events: none;
-}
-.whiteboard-mobile-toolbar > * { pointer-events: all; }
-.whiteboard-mobile-toolbar-trigger {
-  flex-shrink: 0;
-  border-radius: var(--tl-radius-4);
-  background: var(--tl-color-panel);
-  box-shadow: var(--tl-shadow-2);
-}
-.whiteboard-mobile-toolbar .tlui-main-toolbar--vertical {
-  position: static;
-  padding-left: 0;
-}
-.whiteboard-ask {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  padding: 10px 12px;
-  border-top: 1px solid var(--border);
-}
-.whiteboard-ask-input {
-  min-width: 0;
-  min-height: 36px;
-  flex: 1;
-  padding: 0 12px;
-  border: 1px solid var(--border);
-  border-radius: 18px;
-  background: transparent;
-  font-size: 0.9rem;
-}
-.whiteboard-ask-send {
-  display: inline-flex;
-  min-height: 36px;
-  align-items: center;
-  gap: 6px;
-  padding: 0 14px;
-  border-radius: 18px;
-  background: var(--primary);
-  color: var(--primary-foreground);
-  font-size: 0.82rem;
-}
-.whiteboard-ask-send:disabled { opacity: 0.45; }
-.whiteboard-ask-error { width: 100%; margin: 0; color: var(--destructive); font-size: 0.82rem; }
+.chat-panel { display: flex; min-height: 0; flex: 1; flex-direction: column; }
 .aui-thread-root { min-height: 0; }
 .error-banner {
   display: flex;

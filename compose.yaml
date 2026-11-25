@@ -11,8 +11,6 @@ services:
       HOST: 0.0.0.0
       BACKEND_URL: http://backend:8000
       DEV_CACHE_DIR: /tmp/vite-cache
-      # Pass only the browser-safe key; backend secrets stay out of this container.
-      VITE_TLDRAW_LICENSE_KEY: ${VITE_TLDRAW_LICENSE_KEY:-}
     volumes:
       - ./frontend:/workspace/frontend
     depends_on:
