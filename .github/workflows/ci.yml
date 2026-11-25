@@ -16,15 +16,30 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 22.12
+          node-version: "24"
           cache: npm
       - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
       - run: npm ci
-      - run: uv sync --project backend --all-groups --frozen
+      - run: uv sync --project backend --all-groups --locked
       - run: npm run lint
       - run: npm run typecheck
       - run: npm run build
       - run: npm test
+      - run: npm exec -- playwright install --with-deps --only-shell chromium
+      - run: npm run test:smoke
+
+  release-ready:
+    # A failed prerequisite must produce a failed check on main, rather than a skipped job.
+    if: ${{ always() && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    needs: application-checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require CI on the production commit
+        env:
+          APPLICATION_CHECKS: ${{ needs.application-checks.result }}
+        run: test "$APPLICATION_CHECKS" = success
 
   compose-checks:
     runs-on: ubuntu-latest
