@@ -9,10 +9,9 @@ from langgraph.prebuilt import ToolNode, tools_condition
 from openai import APIError
 
 from app.artifacts import ArtifactBackend, ArtifactStore
-from app.skills import build_system_prompt, discover_skills, make_load_skill
-from app.study_document import make_create_study_document
 from app.config import Settings
 from app.skills import build_system_prompt, discover_skills, make_load_skill
+from app.study_document import make_create_study_document
 from app.tools import make_web_search
 
 SKILLS = discover_skills()
