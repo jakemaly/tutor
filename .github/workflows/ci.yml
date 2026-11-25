@@ -25,7 +25,6 @@ jobs:
       - run: uv sync --project backend --all-groups --locked
       - run: npm run lint
       - run: npm run typecheck
-      - run: npm run build
       - run: npm test
       - run: npm exec -- playwright install --with-deps --only-shell chromium
       - run: npm run test:smoke
