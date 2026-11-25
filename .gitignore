@@ -16,6 +16,7 @@ htmlcov/
 # Frontend
 node_modules/
 frontend/dist/
+/test-results/
 
 # Build output
 build/
