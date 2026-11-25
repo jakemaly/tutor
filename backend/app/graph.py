@@ -38,6 +38,7 @@ def is_tool_call_rejection(error: BaseException) -> bool:
         or "tool call validation failed" in str(error).lower()
     )
 
+
 WEB_SEARCH_PROMPT = """
 
 You have a web_search tool. For any question about the latest, current, or recent
