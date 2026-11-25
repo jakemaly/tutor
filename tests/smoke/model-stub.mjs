@@ -26,6 +26,14 @@ createServer(async (request, response) => {
     return;
   }
 
+  const lastMessage = Array.isArray(completion.messages) ? completion.messages.at(-1) : undefined;
+  if (lastMessage?.role !== "user" || lastMessage.content !== "How can I visualize one half?") {
+    response.writeHead(400, { "Content-Type": "application/json" }).end(JSON.stringify({
+      error: { message: "Tutor did not forward the expected smoke-test question." },
+    }));
+    return;
+  }
+
   response.writeHead(200, { "Content-Type": "text/event-stream" });
   const chunks = [
     { delta: { role: "assistant", content: "Try drawing a fraction bar." }, finish_reason: null },
