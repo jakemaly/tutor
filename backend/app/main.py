@@ -8,7 +8,7 @@ import logging
 import os
 import re
 from typing import Any
-from urllib.parse import quote, unquote
+from urllib.parse import quote, unquote, urlparse
 from uuid import UUID
 
 # These libraries adapt the browser stream, define HTTP routes, and represent model messages.
@@ -37,6 +37,9 @@ logger = logging.getLogger(__name__)
 MAX_ATTACHMENT_STORAGE_BYTES = 100 * 1024 * 1024
 CITATION_PREFIX = "[[cite:"
 CITATION_PATTERN = re.compile(r"\[\[cite:([0-9a-fA-F-]{36}):(\d+)\]\]")
+UI_ONLY_TOOLS = {"load_skill", "web_search", STUDY_DOCUMENT_TOOL}
+WEB_PATTERN = re.compile(r"\[\[web:([0-9a-f]{8})\]\]")
+MARKER_PREFIXES = (CITATION_PREFIX, "[[web:")
 CITATION_STOP_WORDS = {
     "about",
     "also",
@@ -77,8 +80,6 @@ CITATION_STOP_WORDS = {
     "with",
 }
 
-# Display-only tool traces: shown in the browser, never sent back to the model as history.
-DISPLAY_ONLY_TOOLS = {"load_skill", STUDY_DOCUMENT_TOOL}
 
 MODEL_FAILURE_MESSAGE = (
     "The model request failed. Check LLM_BASE_URL, LLM_MODEL, LLM_API_KEY, and the backend logs."
@@ -111,7 +112,7 @@ def _message_text(message: dict[str, Any]) -> str:
                 if not (
                     isinstance(part, dict)
                     and part.get("type") == "tool-call"
-                    and part.get("toolName") in DISPLAY_ONLY_TOOLS
+                    and part.get("toolName") in UI_ONLY_TOOLS
                 )
             ]
         if any(
@@ -146,7 +147,7 @@ def _messages_for_graph(
             and all(
                 isinstance(part, dict)
                 and part.get("type") == "tool-result"
-                and part.get("toolName") in DISPLAY_ONLY_TOOLS
+                and part.get("toolName") in UI_ONLY_TOOLS
                 for part in content
             )
         ):
@@ -240,7 +241,7 @@ def _next_citation_segment(text: str, final: bool) -> tuple[str, str] | None:
             return text, ""
         marker_prefix = len(remainder) - len(remainder.lstrip())
         citation_start = end + marker_prefix
-        if text[citation_start:].startswith(CITATION_PREFIX):
+        if text[citation_start:].startswith(MARKER_PREFIXES):
             citation_end = text.find("]]", citation_start)
             if citation_end < 0 and not final:
                 return None
@@ -380,6 +381,18 @@ def _finish_tool(name: str, tool: Any, artifact: Any, failed: bool) -> None:
         tool.set_response(result, is_error=not usable)
     else:
         tool.set_response({"loaded": not failed}, is_error=failed)
+def _render_web_markers(text: str, web_sources: dict[str, dict[str, str]]) -> str:
+    """Turn [[web:ID]] into a link, but only for sources returned in this run."""
+
+    def replace(match: re.Match[str]) -> str:
+        source = web_sources.get(match.group(1).lower())
+        if source is None:
+            return "[source unavailable]"
+        host = urlparse(source["url"]).netloc.removeprefix("www.")
+        return f'[{host}]({source["url"]} "web-citation")'
+
+    text = WEB_PATTERN.sub(replace, text)
+    return re.sub(r"\[\[web:[^\]]*\]\]", "[source unavailable]", text)
 
 
 async def _stream_graph(
@@ -393,18 +406,21 @@ async def _stream_graph(
     calls: dict[str, tuple[str, Any]] = {}
     pending = ""
     cited_links: list[str] = []
+    web_sources: dict[str, dict[str, str]] = {}
 
     def append_text(text: str, final: bool = False) -> None:
         nonlocal pending
-        if not allowed_ids:
+        if not allowed_ids and not web_sources:
             controller.append_text(text)
             return
         pending += text
         while (segment := _next_citation_segment(pending, final=final)) is not None:
             complete, pending = segment
-            controller.append_text(
-                _render_cited_segment(complete, sources, allowed_ids, cited_links)
-            )
+            had_web = bool(WEB_PATTERN.search(complete))
+            complete = _render_web_markers(complete, web_sources)
+            if allowed_ids and (not had_web or CITATION_PREFIX in complete):
+                complete = _render_cited_segment(complete, sources, allowed_ids, cited_links)
+            controller.append_text(complete)
 
     try:
         async for mode, payload in graph.astream(
@@ -423,7 +439,7 @@ async def _stream_graph(
                     for message in update.get("messages", []):
                         if isinstance(message, AIMessage):
                             for call in message.tool_calls:
-                                if call["name"] in DISPLAY_ONLY_TOOLS:
+                                if call["name"] in UI_ONLY_TOOLS:
                                     tool = await controller.add_tool_call(call["name"], call["id"])
                                     # The document body is large and not needed by the browser.
                                     args = (
@@ -435,7 +451,27 @@ async def _stream_graph(
                                     calls[call["id"]] = (call["name"], tool)
                         elif isinstance(message, ToolMessage) and message.tool_call_id in calls:
                             name, tool = calls.pop(message.tool_call_id)
-                            _finish_tool(name, tool, message.artifact, message.status == "error")
+                            failed = message.status == "error"
+                            if name == "web_search":
+                                artifact = (
+                                    message.artifact if isinstance(message.artifact, list) else []
+                                )
+                                for source in artifact:
+                                    existing = web_sources.get(source["id"])
+                                    if existing is None or existing["url"] == source["url"]:
+                                        web_sources[source["id"]] = source
+                                tool.set_response(
+                                    {
+                                        "results": [
+                                            {"title": s["title"], "url": s["url"]}
+                                            for s in artifact
+                                        ],
+                                        "skipped": message.artifact is None and not failed,
+                                    },
+                                    is_error=failed,
+                                )
+                            else:
+                                _finish_tool(name, tool, message.artifact, failed)
         append_text("", final=True)
         if cited_links:
             controller.append_text("\n\n**Sources:** " + " · ".join(dict.fromkeys(cited_links)))
@@ -453,6 +489,52 @@ def create_app(
     model: BaseChatModel | None = None,
     artifacts: ArtifactBackend | None = None,
 ) -> FastAPI:
+    async for mode, payload in graph.astream(
+        {"messages": messages}, stream_mode=["messages", "updates"]
+    ):
+        if controller.is_cancelled:
+            break
+        if mode == "messages":
+            chunk, _metadata = payload
+            if isinstance(chunk, AIMessageChunk):
+                text = _text_from_chunk(chunk)
+                if text:
+                    append_text(text)
+        elif mode == "updates":
+            for update in payload.values():
+                for message in update.get("messages", []):
+                    if isinstance(message, AIMessage):
+                        for call in message.tool_calls:
+                            if call["name"] in UI_ONLY_TOOLS:
+                                tool = await controller.add_tool_call(call["name"], call["id"])
+                                tool.append_args_text(json.dumps(call["args"]))
+                                calls[call["id"]] = tool
+                    elif isinstance(message, ToolMessage) and message.tool_call_id in calls:
+                        failed = message.status == "error"
+                        if message.name == "web_search":
+                            artifact = (
+                                message.artifact if isinstance(message.artifact, list) else []
+                            )
+                            for source in artifact:
+                                existing = web_sources.get(source["id"])
+                                if existing is None or existing["url"] == source["url"]:
+                                    web_sources[source["id"]] = source
+                            response = {
+                                "results": [
+                                    {"title": s["title"], "url": s["url"]} for s in artifact
+                                ],
+                                "skipped": message.artifact is None and not failed,
+                            }
+                        else:
+                            response = {"loaded": not failed}
+                        calls.pop(message.tool_call_id).set_response(response, is_error=failed)
+
+    append_text("", final=True)
+    if cited_links:
+        controller.append_text("\n\n**Sources:** " + " · ".join(dict.fromkeys(cited_links)))
+
+
+def create_app(settings: Settings | None = None, model: BaseChatModel | None = None) -> FastAPI:
     """Create an app, allowing tests and other integrations to inject a chat model."""
     app_settings = settings or Settings()
     if artifacts is None:
@@ -464,7 +546,7 @@ def create_app(
                 "create_app(artifacts=...); see docs/study-documents.md."
             )
     # Tests can inject a fake model; normal startup waits until the first configured chat request.
-    graph = create_graph(model, artifacts) if model is not None else None
+    graph = create_graph(model, app_settings, artifacts) if model is not None else None
 
     app = FastAPI(title="Tutor API", version="0.1.0")
     app.state.settings = app_settings
@@ -577,7 +659,9 @@ def create_app(
                     detail="Configure LLM_BASE_URL and LLM_MODEL in .env, then restart the app.",
                 )
             # Build lazily so health/UI still work without credentials, then reuse the graph.
-            selected_graph = create_graph(create_chat_model(app_settings), artifacts)
+            selected_graph = create_graph(
+                create_chat_model(app_settings), app_settings, artifacts
+            )
             app.state.graph = selected_graph
 
         input_messages = _messages_for_graph(request.messages, app.state.sources)

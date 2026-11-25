@@ -62,6 +62,12 @@ Start Docker Desktop, then run `docker compose up -d --build`. Open http://local
 
 
 
+## Context size and long answers
+
+vLLM starts with `--max-model-len auto`. It uses the model's full context length if that fits in GPU memory, and otherwise the largest length that fits. The deployment can run on an L4 or an L40S, so the size can change whenever Modal starts a new container.
+
+The server sets no fixed output cap, and the backend sends no `max_tokens`. An answer can use all of the context that remains after the prompt, so it stops early only when the context is full. Continuing such an answer would have no room left, so the backend does not try to resume it.
+
 ## Stop the deployment
 
 
@@ -86,4 +92,4 @@ Run `docker compose stop` to stop the local tutor.
 
 
 
-Verified the authenticated model endpoint, streamed a response directly from vLLM, and observed text streaming in the tutor browser. The deployment disables thinking by default and caps generated output at 512 tokens.
+Verified the authenticated model endpoint, streamed a response directly from vLLM, and observed text streaming in the tutor browser. The deployment disables thinking by default and does not cap generated output.

@@ -39,6 +39,7 @@ import {
   RefreshCwIcon,
   SquareIcon,
   XIcon,
+  GlobeIcon,
 } from "lucide-react";
 import { useState, type FC } from "react";
 
@@ -59,7 +60,7 @@ const ThreadHistorySkeleton: FC = () => (
   <div
     data-slot="aui_thread-history-skeleton"
     role="status"
-    className="animate-in fade-in fill-mode-both flex flex-col [animation-delay:150ms] [animation-duration:200ms]"
+    className="animate-in fade-in fill-mode-both flex flex-col [animation-delay:150ms] animation-duration-[200ms]"
   >
     <span className="sr-only">Loading conversation</span>
     <div className="flex animate-pulse flex-col gap-y-6 motion-reduce:animate-none">
@@ -298,13 +299,16 @@ const AssistantMessage: FC = () => {
         <MessagePrimitive.Parts
           components={{
             Text: MarkdownText,
-            tools: { by_name: { load_skill: SkillToolStatus, create_study_document: DocumentCard }, },
+            tools: { by_name: { load_skill: SkillToolStatus, create_study_document: DocumentCard, web_search: WebSearchToolStatus } },
           }}
         />
         <AuiIf
-          condition={(s) =>
-            s.message.status?.type === "running" && s.message.parts.length === 0
-          }
+          condition={(s) => {
+            if (s.message.status?.type !== "running") return false;
+            const last = s.message.parts[s.message.parts.length - 1];
+            return !last || last.type !== "text";
+          }}
+
         >
           <span
             data-slot="aui_assistant-message-indicator"
@@ -340,6 +344,46 @@ const SkillToolStatus: FC<ToolCallMessagePartProps<{ name?: string }, { loaded: 
       ? "Skill not loaded" : "Loading skill"}: <span className="font-medium">{args.name || "…"}</span>
   </p>
 );
+
+type SearchResult = { title: string; url: string };
+
+const WebSearchToolStatus: FC<
+  ToolCallMessagePartProps<
+    { query?: string },
+    { results: SearchResult[]; skipped?: boolean }
+  >
+> = ({ args, result, status, isError }) =>
+  result?.skipped ? null : (
+    <div role="status" className="my-2 text-sm text-muted-foreground">
+      <p className="flex items-center gap-1.5">
+        <GlobeIcon className="size-3.5 shrink-0" aria-hidden="true" />
+        <span>
+          {isError || status.type === "incomplete"
+            ? "Search failed"
+            : result
+              ? "Searched"
+              : "Searching"}
+          : <span className="font-medium">{args.query || "…"}</span>
+        </span>
+      </p>
+      {result?.results?.length ? (
+        <ul className="mt-1 ms-5 flex list-disc flex-col gap-0.5">
+          {result.results.map((r) => (
+            <li key={r.url} className="truncate">
+              <a
+                href={r.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="hover:text-foreground underline underline-offset-2"
+              >
+                {r.title}
+              </a>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
+  );
 
 const AssistantError: FC = () => {
   const aui = useAui();
@@ -406,7 +450,7 @@ const AssistantActionBar: FC = () => {
           side="bottom"
           align="start"
           sideOffset={6}
-          className="aui-action-bar-more-content bg-popover/95 text-popover-foreground data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 data-[state=open]:animate-in data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=closed]:animate-out data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 z-50 min-w-[8rem] overflow-hidden rounded-xl border p-1.5 shadow-lg backdrop-blur-sm"
+          className="aui-action-bar-more-content bg-popover/95 text-popover-foreground data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 data-[state=open]:animate-in data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=closed]:animate-out data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 z-50 min-w-32 overflow-hidden rounded-xl border p-1.5 shadow-lg backdrop-blur-sm"
         >
           <ActionBarPrimitive.ExportMarkdown asChild>
             <ActionBarMorePrimitive.Item className="aui-action-bar-more-item hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm outline-none select-none">
@@ -446,7 +490,7 @@ const UserMessage: FC = () => {
             </a>
           )}
         </MessagePrimitive.Attachments>
-        <div className="aui-user-action-bar-wrapper pointer-events-none absolute start-0 top-1/2 -translate-x-full -translate-y-1/2 pe-2 opacity-0 transition-opacity group-focus-within/message-root:pointer-events-auto group-focus-within/message-root:opacity-100 group-hover/message-root:pointer-events-auto group-hover/message-root:opacity-100 peer-empty:hidden rtl:translate-x-full">
+        <div className="aui-user-action-bar-wrapper pointer-events-none absolute inset-s-0 top-1/2 -translate-x-full -translate-y-1/2 pe-2 opacity-0 transition-opacity group-focus-within/message-root:pointer-events-auto group-focus-within/message-root:opacity-100 group-hover/message-root:pointer-events-auto group-hover/message-root:opacity-100 peer-empty:hidden rtl:translate-x-full">
           <UserActionBar />
         </div>
       </div>

@@ -18,7 +18,7 @@ from pypdf import PdfWriter
 
 from app.config import Settings
 from app.documents import UploadedSource, create_source
-from app.graph import SYSTEM_PROMPT, create_graph
+from app.graph import BASE_SYSTEM_PROMPT, create_graph
 from app.main import (
     MAX_ATTACHMENT_STORAGE_BYTES,
     ChatRequest,
@@ -105,8 +105,10 @@ def test_health_reports_configuration_without_disclosing_it() -> None:
     assert "example.invalid" not in response.text
 
 
-def test_missing_configuration_keeps_health_available_and_chat_actionable() -> None:
+def test_missing_configuration_keeps_health_available_and_chat_actionable(monkeypatch) -> None:
     """An unconfigured app stays inspectable and tells chat callers what to configure."""
+    monkeypatch.delenv("LLM_BASE_URL", raising=False)
+    monkeypatch.delenv("LLM_MODEL", raising=False)
     client = TestClient(create_app(settings=Settings(_env_file=None)))
 
     assert client.get("/api/health").json() == {
@@ -143,7 +145,7 @@ def test_streams_incremental_text_and_uses_the_full_supplied_history() -> None:
     assert len(deltas) > 1
     history = model._seen_messages[0]
     assert [message.content for message in history] == [
-        SYSTEM_PROMPT,
+        BASE_SYSTEM_PROMPT,
         "First turn",
         "Prior answer",
         "Second turn",
@@ -421,12 +423,12 @@ def test_graph_is_built_from_an_injected_langchain_model() -> None:
     response = asyncio.run(graph.ainvoke({"messages": [HumanMessage(content="A question")]}))
 
     assert response["messages"][-1].content == "A helpful answer"
-    assert len(SYSTEM_PROMPT) > 0
+    assert len(BASE_SYSTEM_PROMPT) > 0
 
 
 def test_skill_json_is_literal_context_not_a_prompt_template(monkeypatch) -> None:
-    prompt = SYSTEM_PROMPT + '\nExample: {"step": "explain"}'
-    monkeypatch.setattr("app.graph.SYSTEM_PROMPT", prompt)
+    prompt = BASE_SYSTEM_PROMPT + '\nExample: {"step": "explain"}'
+    monkeypatch.setattr("app.graph.BASE_SYSTEM_PROMPT", prompt)
     model = RecordingFakeChatModel(responses=["A hint"])
     graph = create_graph(model)
     asyncio.run(graph.ainvoke({"messages": [HumanMessage(content="Help me")]}))
@@ -483,11 +485,11 @@ def test_configured_graph_is_built_once_and_reused(monkeypatch) -> None:
     builds = 0
     original_create_graph = create_graph
 
-    def count_graph_builds(selected_model, artifacts=None):
+    def count_graph_builds(selected_model, *args, **kwargs):
         """Count graph construction while delegating to the real graph factory."""
         nonlocal builds
         builds += 1
-        return original_create_graph(selected_model, artifacts)
+        return original_create_graph(selected_model, *args, **kwargs)
 
     monkeypatch.setattr("app.main.create_chat_model", lambda _settings: model)
     monkeypatch.setattr("app.main.create_graph", count_graph_builds)
@@ -566,7 +568,7 @@ def test_openai_compatible_stream_works_through_fastapi_and_langgraph() -> None:
     assert sent_messages[0]["role"] == "system"
     assert '<loaded_skill name="socratic-questioning">' in sent_messages[0]["content"]
     assert [message["content"] for message in sent_messages] == [
-        SYSTEM_PROMPT,
+        BASE_SYSTEM_PROMPT,
         "First turn",
         "Prior answer",
         "Second turn",
