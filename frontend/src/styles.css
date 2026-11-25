@@ -97,14 +97,6 @@ html, body, #root { width: 100%; min-width: 320px; height: 100%; margin: 0; }
   justify-content: space-between;
   padding: 10px 20px;
 }
-.chat-controls-actions { display: flex; align-items: center; gap: 12px; }
-.tmi-home-link {
-  display: grid;
-  width: 36px;
-  height: 36px;
-  place-items: center;
-  border-radius: 50%;
-}
 
 .new-chat-button {
   display: inline-flex;
@@ -120,7 +112,6 @@ html, body, #root { width: 100%; min-width: 320px; height: 100%; margin: 0; }
 }
 .new-chat-button:hover { background: var(--color-surface-hover); }
 .new-chat-button:focus-visible,
-.tmi-home-link:focus-visible,
 .error-dismiss:focus-visible,
 .aui-prompt-row button:focus-visible {
   outline: 2px solid var(--color-focus);
@@ -302,7 +293,6 @@ html, body, #root { width: 100%; min-width: 320px; height: 100%; margin: 0; }
 
 @media (max-width: 700px) {
   .chat-controls { padding-inline: 16px; }
-  .chat-controls-actions { gap: 8px; }
   .aui-thread-content { width: calc(100% - 32px); padding-top: 36px; }
   .aui-thread-content-home { gap: 16px; padding-block: 24px; }
   .aui-composer-shell { padding-inline: 14px; }
@@ -314,7 +304,6 @@ html, body, #root { width: 100%; min-width: 320px; height: 100%; margin: 0; }
 @media (pointer: coarse) {
   .chat-controls { padding-block: 6px; }
   .chat-controls [data-slot="sidebar-trigger"],
-  .tmi-home-link,
   [data-mobile="true"] [data-slot="sheet-close"],
   .aui-composer-attachment,
   .aui-composer-send { width: 44px; height: 44px; }

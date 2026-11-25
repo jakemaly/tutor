@@ -121,7 +121,7 @@ Only the first two are visual styling decisions in the current baseline. The han
 
 ## Screen behavior
 
-The home screen centers the heading, composer, and suggestions within the available space. The desktop sidebar opens by default. The conversation list toggle sits at the top left of the chat area, with New chat and the TMI home link at the top right. On phones, the toggle opens the conversation list in a drawer. Once a student sends a message, the composer moves to the bottom of the conversation.
+The home screen centers the heading, composer, and suggestions within the available space. The desktop sidebar opens by default, with the TMI logo as part of its home link at the top left. The conversation list toggle sits at the top left of the chat area, and New chat sits at the top right. On phones, the toggle opens the conversation list in a drawer. Once a student sends a message, the composer moves to the bottom of the conversation.
 
 The composer’s plus button accepts a PDF or image. The microphone is shown as disabled. The send button gives way to a stop button while the tutor is replying.
 

@@ -5,7 +5,6 @@ import {
   useRemoteThreadListRuntime,
 } from "@assistant-ui/react";
 import { useDataStreamRuntime } from "@assistant-ui/react-data-stream";
-import tmiLogo from "@/assets/TMI.png";
 import { attachmentAdapter } from "@/lib/attachments";
 import { Thread } from "@/components/assistant-ui/elements/thread.aui";
 import { ThreadListSidebar } from "@/components/threadlist-sidebar.aui";
@@ -90,14 +89,9 @@ function ChatControls({ onNewChat }: { onNewChat: () => void }) {
         aria-label="Toggle conversation list"
         aria-expanded={isMobile ? openMobile : open}
       />
-      <div className="chat-controls-actions">
-        <button className="new-chat-button" type="button" onClick={onNewChat}>
-          <span aria-hidden="true">＋</span> New chat
-        </button>
-        <a className="tmi-home-link" href="/" aria-label="Tutor home">
-          <img src={tmiLogo} alt="" width={36} height={36} />
-        </a>
-      </div>
+      <button className="new-chat-button" type="button" onClick={onNewChat}>
+        <span aria-hidden="true">＋</span> New chat
+      </button>
     </header>
   );
 }
