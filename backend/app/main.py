@@ -381,6 +381,8 @@ def _finish_tool(name: str, tool: Any, artifact: Any, failed: bool) -> None:
         tool.set_response(result, is_error=not usable)
     else:
         tool.set_response({"loaded": not failed}, is_error=failed)
+
+
 def _render_web_markers(text: str, web_sources: dict[str, dict[str, str]]) -> str:
     """Turn [[web:ID]] into a link, but only for sources returned in this run."""
 
@@ -463,8 +465,7 @@ async def _stream_graph(
                                 tool.set_response(
                                     {
                                         "results": [
-                                            {"title": s["title"], "url": s["url"]}
-                                            for s in artifact
+                                            {"title": s["title"], "url": s["url"]} for s in artifact
                                         ],
                                         "skipped": message.artifact is None and not failed,
                                     },
@@ -489,52 +490,6 @@ def create_app(
     model: BaseChatModel | None = None,
     artifacts: ArtifactBackend | None = None,
 ) -> FastAPI:
-    async for mode, payload in graph.astream(
-        {"messages": messages}, stream_mode=["messages", "updates"]
-    ):
-        if controller.is_cancelled:
-            break
-        if mode == "messages":
-            chunk, _metadata = payload
-            if isinstance(chunk, AIMessageChunk):
-                text = _text_from_chunk(chunk)
-                if text:
-                    append_text(text)
-        elif mode == "updates":
-            for update in payload.values():
-                for message in update.get("messages", []):
-                    if isinstance(message, AIMessage):
-                        for call in message.tool_calls:
-                            if call["name"] in UI_ONLY_TOOLS:
-                                tool = await controller.add_tool_call(call["name"], call["id"])
-                                tool.append_args_text(json.dumps(call["args"]))
-                                calls[call["id"]] = tool
-                    elif isinstance(message, ToolMessage) and message.tool_call_id in calls:
-                        failed = message.status == "error"
-                        if message.name == "web_search":
-                            artifact = (
-                                message.artifact if isinstance(message.artifact, list) else []
-                            )
-                            for source in artifact:
-                                existing = web_sources.get(source["id"])
-                                if existing is None or existing["url"] == source["url"]:
-                                    web_sources[source["id"]] = source
-                            response = {
-                                "results": [
-                                    {"title": s["title"], "url": s["url"]} for s in artifact
-                                ],
-                                "skipped": message.artifact is None and not failed,
-                            }
-                        else:
-                            response = {"loaded": not failed}
-                        calls.pop(message.tool_call_id).set_response(response, is_error=failed)
-
-    append_text("", final=True)
-    if cited_links:
-        controller.append_text("\n\n**Sources:** " + " · ".join(dict.fromkeys(cited_links)))
-
-
-def create_app(settings: Settings | None = None, model: BaseChatModel | None = None) -> FastAPI:
     """Create an app, allowing tests and other integrations to inject a chat model."""
     app_settings = settings or Settings()
     if artifacts is None:
@@ -659,9 +614,7 @@ def create_app(settings: Settings | None = None, model: BaseChatModel | None = N
                     detail="Configure LLM_BASE_URL and LLM_MODEL in .env, then restart the app.",
                 )
             # Build lazily so health/UI still work without credentials, then reuse the graph.
-            selected_graph = create_graph(
-                create_chat_model(app_settings), app_settings, artifacts
-            )
+            selected_graph = create_graph(create_chat_model(app_settings), app_settings, artifacts)
             app.state.graph = selected_graph
 
         input_messages = _messages_for_graph(request.messages, app.state.sources)
