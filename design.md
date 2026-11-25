@@ -85,7 +85,6 @@ Teal and coral identify the TMI mark; they are not tutor/student role colors or 
 | `TMI/Body/Student` | SF Pro Regular | 16 / 24 px | Student message |
 | `TMI/Composer/Placeholder` | SF Pro Regular | 16 / 24 px | Composer placeholder |
 | `TMI/Control/Prompt` | SF Pro Regular | 14 / 19.6 px | Suggested prompt |
-| `TMI/Control/Brand` | SF Pro Semibold | 17 / 25.5 px | Header name |
 | `TMI/Control/Secondary` | SF Pro Medium | 14 / 20 px | Secondary control labels |
 | `TMI/Meta/Action` | SF Pro Regular | 14 / 20 px | Message actions |
 | `TMI/Meta/Disclaimer` | SF Pro Regular | 12 / 16 px | Accuracy note |
@@ -105,7 +104,6 @@ The web app self-hosts Alike for the display face under the SIL Open Font Licens
 | `radius/code` | 10 px |
 | `radius/error` | 11 px |
 | `radius/full` | 999 px |
-| `layout/topbar-height` | 56 px |
 | `layout/content-width` | 760 px |
 | `layout/composer-height` | 96 px minimum |
 | `layout/student-message-max` | 410 px |
@@ -123,9 +121,9 @@ Only the first two are visual styling decisions in the current baseline. The han
 
 ## Screen behavior
 
-The home screen centers the heading, composer, and suggestions within the available space. The desktop sidebar opens by default. The header shows the conversation list toggle and New chat on the home screen and in active conversations. On phones, the toggle opens the conversation list in a drawer. Once a student sends a message, the composer moves to the bottom of the conversation.
+The home screen centers the heading, composer, and suggestions within the available space. The desktop sidebar opens by default. The conversation list toggle sits at the top left of the chat area, with New chat and the TMI home link at the top right. On phones, the toggle opens the conversation list in a drawer. Once a student sends a message, the composer moves to the bottom of the conversation.
 
-The composer displays the Tutor identity for the configured model. In both states, the plus button accepts a PDF or image. The microphone is shown as disabled. The send button gives way to a stop button while the tutor is replying.
+The composer’s plus button accepts a PDF or image. The microphone is shown as disabled. The send button gives way to a stop button while the tutor is replying.
 
 ## Third-party font license
 

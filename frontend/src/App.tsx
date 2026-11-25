@@ -5,6 +5,7 @@ import {
   useRemoteThreadListRuntime,
 } from "@assistant-ui/react";
 import { useDataStreamRuntime } from "@assistant-ui/react-data-stream";
+import tmiLogo from "@/assets/TMI.png";
 import { attachmentAdapter } from "@/lib/attachments";
 import { Thread } from "@/components/assistant-ui/elements/thread.aui";
 import { ThreadListSidebar } from "@/components/threadlist-sidebar.aui";
@@ -57,7 +58,7 @@ export default function App() {
         <SidebarProvider className="app-shell">
           <ThreadListSidebar />
           <SidebarInset className="app-main">
-            <ChatHeader onNewChat={startNewChat} />
+            <ChatControls onNewChat={startNewChat} />
             {error && (
               <div className="error-banner" role="alert">
                 <span>{error}</span>
@@ -80,21 +81,23 @@ export default function App() {
   );
 }
 
-function ChatHeader({ onNewChat }: { onNewChat: () => void }) {
+function ChatControls({ onNewChat }: { onNewChat: () => void }) {
   const { open, openMobile, isMobile } = useSidebar();
 
   return (
-    <header className="topbar">
-      <div className="topbar-leading">
-        <SidebarTrigger
-          aria-label="Toggle conversation list"
-          aria-expanded={isMobile ? openMobile : open}
-        />
-        <a className="brand" href="/" aria-label="Tutor home">Tutor</a>
+    <header className="chat-controls">
+      <SidebarTrigger
+        aria-label="Toggle conversation list"
+        aria-expanded={isMobile ? openMobile : open}
+      />
+      <div className="chat-controls-actions">
+        <button className="new-chat-button" type="button" onClick={onNewChat}>
+          <span aria-hidden="true">＋</span> New chat
+        </button>
+        <a className="tmi-home-link" href="/" aria-label="Tutor home">
+          <img src={tmiLogo} alt="" width={36} height={36} />
+        </a>
       </div>
-      <button className="new-chat-button" type="button" onClick={onNewChat}>
-        <span aria-hidden="true">＋</span> New chat
-      </button>
     </header>
   );
 }

@@ -7,8 +7,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { ErrorState } from "@/components/error-state";
 import { cn } from "@/lib/utils";
-import tutorHomeLogo from "@/assets/TMI-home.png";
-import tutorLogo from "@/assets/TMI.png";
 import attachmentIcon from "@/assets/attachment.svg";
 import microphoneIcon from "@/assets/microphone.svg";
 import sendArrowIcon from "@/assets/send-arrow.svg";
@@ -214,7 +212,7 @@ const Composer: FC<{ isEmpty: boolean; inputRef: Ref<HTMLTextAreaElement> }> = (
           rows={1}
           aria-label="Message Tutor"
         />
-        <ComposerAction isEmpty={isEmpty} />
+        <ComposerAction />
       </div>
     </ComposerPrimitive.Root>
   );
@@ -227,7 +225,7 @@ const AttachmentAddError: FC = () => {
   return error ? <p className="px-2 text-xs text-destructive" role="alert">{error}</p> : null;
 };
 
-const ComposerAction: FC<{ isEmpty: boolean }> = ({ isEmpty }) => {
+const ComposerAction: FC = () => {
   // Submission may be pending before the model run starts.
   const isSending = useAuiState(
     (s) =>
@@ -237,22 +235,16 @@ const ComposerAction: FC<{ isEmpty: boolean }> = ({ isEmpty }) => {
 
   return (
     <div className="aui-composer-actions">
-      <div className="aui-composer-tools">
-        <ComposerPrimitive.AddAttachment asChild>
-          <TooltipIconButton
-            tooltip="Attach a PDF or image"
-            aria-label="Attach a PDF or image"
-            className="aui-composer-attachment"
-            side="top"
-          >
-            <img src={attachmentIcon} alt="" width={24} height={24} />
-          </TooltipIconButton>
-        </ComposerPrimitive.AddAttachment>
-        <span className="aui-composer-brand">
-          <img src={isEmpty ? tutorHomeLogo : tutorLogo} alt="" width={40} height={40} />
-          Tutor
-        </span>
-      </div>
+      <ComposerPrimitive.AddAttachment asChild>
+        <TooltipIconButton
+          tooltip="Attach a PDF or image"
+          aria-label="Attach a PDF or image"
+          className="aui-composer-attachment"
+          side="top"
+        >
+          <img src={attachmentIcon} alt="" width={24} height={24} />
+        </TooltipIconButton>
+      </ComposerPrimitive.AddAttachment>
       <div className="aui-composer-submit">
         <button
           className="aui-composer-voice"
