@@ -19,6 +19,11 @@ class Settings(BaseSettings):
     llm_model: str | None = None  # Provider's model or deployment name.
     llm_api_key: SecretStr | None = None  # Optional when the endpoint needs no auth.
 
+    searxng_url: str = ""  #
+    web_search_max_results: int = 5  #
+    web_tool_timeout_s: float = 10.0
+    web_max_calls_per_answer: int = 3
+
     @property
     def model_configured(self) -> bool:
         """A URL and model are required before the backend can create a client."""
