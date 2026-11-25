@@ -1,0 +1,95 @@
+/* The runtime styling mirror for the TMI Core variables in Figma. */
+@font-face {
+  font-family: "Alike";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/fonts/Alike-Regular.ttf") format("truetype");
+}
+
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("/fonts/InterVariable.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Inter";
+  font-style: italic;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("/fonts/InterVariable-Italic.woff2") format("woff2");
+}
+
+:root {
+  color-scheme: light;
+
+  --color-surface-base: #ffffff;
+  --color-surface-student: #f1f1f1;
+  --color-surface-code: #f7f7f7;
+  --color-surface-hover: #fafafa;
+  --color-text-primary: #1e1e1e;
+  --color-text-secondary: #757575;
+  --color-border-default: #d6d6d6;
+  --color-border-subtle: #e1e1e1;
+  --color-action-neutral: #a6a6a6;
+  --color-action-neutral-hover: #969696;
+  --color-focus: #006d77;
+  --color-brand-teal: #10a9ba;
+  --color-brand-coral: #ff5a3c;
+  --color-feedback-error-surface: #fff7f4;
+  --color-feedback-error-border: #ead2cc;
+  --color-feedback-error-text: #783d31;
+
+  --font-display: "Alike", Georgia, "Times New Roman", serif;
+  --font-ui: "SF Pro", "SF Pro Text", "SF Pro Display", -apple-system,
+    BlinkMacSystemFont, "Inter", system-ui, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+
+  --type-size-display: 44px;
+  --type-line-display: 1.2;
+  --type-size-message: 16px;
+  --type-line-tutor: 26px;
+  --type-line-student: 24px;
+  --type-size-composer: 16px;
+  --type-line-composer: 24px;
+  --type-size-prompt: 14px;
+  --type-line-prompt: 1.4;
+  --type-size-brand: 17px;
+  --type-size-model: 18px;
+  --type-line-model: 25px;
+  --type-size-model-detail: 16px;
+  --type-line-model-detail: 22px;
+  --type-size-control-secondary: 14px;
+  --type-line-control-secondary: 20px;
+  --type-size-action: 14px;
+  --type-line-action: 20px;
+  --type-size-disclaimer: 12px;
+  --type-line-disclaimer: 16px;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-12: 48px;
+
+  --radius-prompt: 12px;
+  --radius-control: 12px;
+  --radius-new-chat: 18px;
+  --radius-student: 21px;
+  --radius-composer: 18px;
+  --radius-full: 999px;
+  --radius-code: 10px;
+  --radius-error: 11px;
+
+  --layout-topbar-height: 56px;
+  --layout-content-width: 760px;
+  --layout-composer-height: 96px;
+  --layout-student-message-max: 410px;
+
+}
