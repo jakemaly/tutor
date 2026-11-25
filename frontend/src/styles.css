@@ -166,7 +166,11 @@ html, body, #root { width: 100%; min-width: 320px; height: 100%; margin: 0; }
   font-size: var(--type-size-prompt);
   line-height: var(--type-line-prompt);
 }
-.aui-prompt-row button:hover { border-color: var(--border); background: var(--color-surface-hover); }
+.aui-prompt-row button:hover {
+  border-color: var(--color-border-accent-hover);
+  background: var(--color-surface-accent-hover);
+  color: var(--color-text-accent-hover);
+}
 
 .aui-composer-root { width: 100%; }
 .aui-composer-shell {
@@ -210,12 +214,20 @@ html, body, #root { width: 100%; min-width: 320px; height: 100%; margin: 0; }
   height: 36px;
   place-items: center;
 }
-.aui-composer-send {
+.aui-composer-send,
+.aui-composer-cancel {
   width: 40px;
   height: 40px;
   border-radius: var(--radius-control);
 }
-.aui-composer-send img, .aui-composer-voice img { width: 18px; height: 18px; }
+.aui-composer-voice img { width: 18px; height: 18px; }
+.aui-composer-send:not(:disabled) {
+  background: var(--color-action-accent);
+  color: var(--foreground);
+}
+.aui-composer-send:not(:disabled):hover {
+  background: color-mix(in srgb, var(--color-action-accent) 95%, var(--foreground));
+}
 .aui-composer-send:disabled {
   background: var(--color-action-neutral);
   opacity: 1;
@@ -306,7 +318,8 @@ html, body, #root { width: 100%; min-width: 320px; height: 100%; margin: 0; }
   .chat-controls [data-slot="sidebar-trigger"],
   [data-mobile="true"] [data-slot="sheet-close"],
   .aui-composer-attachment,
-  .aui-composer-send { width: 44px; height: 44px; }
+  .aui-composer-send,
+  .aui-composer-cancel { width: 44px; height: 44px; }
   .new-chat-button, .aui-prompt-row button { min-height: 44px; }
 }
 

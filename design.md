@@ -52,7 +52,7 @@ These are design hypotheses, not claims that a palette or font improves learning
 
 ## Styling set
 
-The app tokens live in [`frontend/src/design-tokens.css`](frontend/src/design-tokens.css). The table below maps the Figma styles to their web values. Message sizes and line heights follow the deployed app.
+The app tokens live in [`frontend/src/design-tokens.css`](frontend/src/design-tokens.css). Message sizes and line heights follow the deployed app.
 
 ### Color
 
@@ -62,12 +62,16 @@ The app tokens live in [`frontend/src/design-tokens.css`](frontend/src/design-to
 | `color/surface/student` | `#F1F1F1` | Neutral student message bubble |
 | `color/surface/code` | `#F7F7F7` | Code block surface |
 | `color/surface/hover` | `#FAFAFA` | Quiet hover surface |
+| `color/surface/accent-hover` | `#F2F7F6` | Prompt hover surface |
 | `color/text/primary` | `#1E1E1E` | Main text and controls |
 | `color/text/secondary` | `#757575` | Placeholder, action, and metadata text |
+| `color/text/accent-hover` | `#345954` | Prompt hover text |
 | `color/border/default` | `#D6D6D6` | Composer and control outlines |
 | `color/border/subtle` | `#E1E1E1` | Quiet outlines on the home state |
+| `color/border/accent-hover` | `#C4D8D4` | Prompt hover outline |
+| `color/action/accent` | `#799C98` | Enabled Send control background |
 | `color/action/neutral` | `#A6A6A6` | Disabled send control background |
-| `color/focus` | `#006D77` | Keyboard focus outline |
+| `color/focus` | `#436C67` | Keyboard focus outline |
 | `color/brand/teal` | `#10A9BA` | TMI mark and restrained brand accents |
 | `color/brand/coral` | `#FF5A3C` | TMI mark and restrained brand accents |
 | `color/feedback/error-surface` | `#FFF7F4` | Error message surface |

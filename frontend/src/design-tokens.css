@@ -1,4 +1,4 @@
-/* The runtime styling mirror for the TMI Core variables in Figma. */
+/* Shared Tutor styling tokens, including the TMI Core palette. */
 @font-face {
   font-family: "Alike";
   font-style: normal;
@@ -30,13 +30,17 @@
   --color-surface-student: #f1f1f1;
   --color-surface-code: #f7f7f7;
   --color-surface-hover: #fafafa;
+  --color-surface-accent-hover: #f2f7f6;
   --color-text-primary: #1e1e1e;
   --color-text-secondary: #757575;
+  --color-text-accent-hover: #345954;
   --color-border-default: #d6d6d6;
   --color-border-subtle: #e1e1e1;
+  --color-border-accent-hover: #c4d8d4;
+  --color-action-accent: #799c98;
   --color-action-neutral: #a6a6a6;
   --color-action-neutral-hover: #969696;
-  --color-focus: #006d77;
+  --color-focus: #436c67;
   --color-brand-teal: #10a9ba;
   --color-brand-coral: #ff5a3c;
   --color-feedback-error-surface: #fff7f4;

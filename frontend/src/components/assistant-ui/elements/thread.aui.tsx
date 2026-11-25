@@ -9,7 +9,6 @@ import { ErrorState } from "@/components/error-state";
 import { cn } from "@/lib/utils";
 import attachmentIcon from "@/assets/attachment.svg";
 import microphoneIcon from "@/assets/microphone.svg";
-import sendArrowIcon from "@/assets/send-arrow.svg";
 import {
   ActionBarMorePrimitive,
   ActionBarPrimitive,
@@ -27,6 +26,7 @@ import {
 } from "@assistant-ui/react";
 import {
   ArrowDownIcon,
+  ArrowUpIcon,
   CheckIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
@@ -272,7 +272,7 @@ const ComposerAction: FC = () => {
               className="aui-composer-send"
               aria-label="Send message"
             >
-              <img src={sendArrowIcon} alt="" width={22} height={22} />
+              <ArrowUpIcon aria-hidden="true" className="size-[18px]" strokeWidth={1.8} />
             </TooltipIconButton>
           </ComposerPrimitive.Send>
         </AuiIf>
@@ -288,7 +288,7 @@ const ComposerAction: FC = () => {
               type="button"
               variant="default"
               size="icon"
-              className="aui-composer-send"
+              className="aui-composer-cancel"
               aria-label={isSending ? "Cancel sending" : "Stop generating"}
             >
               <SquareIcon className="aui-composer-cancel-icon size-3.5 fill-current" />
