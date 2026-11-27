@@ -43,7 +43,9 @@ class HubSync:
         stage = run_dir.parent / f".hub-staging-{run_dir.name}" / re.sub(r"\W+", "-", message)
         shutil.rmtree(stage, ignore_errors=True)
         for pattern in include:
-            for src in run_dir.glob(pattern):
+            # A trailing ** yields only directories on Python 3.12; include their files too.
+            file_pattern = f"{pattern}/*" if pattern.endswith("/**") else pattern
+            for src in run_dir.glob(file_pattern):
                 if src.is_file():
                     dst = stage / src.relative_to(run_dir)
                     dst.parent.mkdir(parents=True, exist_ok=True)
