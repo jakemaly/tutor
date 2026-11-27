@@ -1,0 +1,22 @@
+{
+  "bigmath-test-0": {
+    "source_sha256": "1f2780cbb6ca8648f1f5541c88a01ca93854287debfd5d4c6b86ce86be0768ad",
+    "question": "For positive a, b, c with a(b+c)=9, minimize 2/a + 2/(b+c) + 8/(a+b+c).",
+    "answer": "8/3"
+  },
+  "bigmath-test-1": {
+    "source_sha256": "cb36272b08814e55ad463fad253bd6606ef15f28b2e07be84cc54f27aee79884",
+    "question": "Two fair eight-sided dice are numbered 1 through 8. For rolls u and v, what is the smallest R such that u^2 + v^2 <= R is certain?",
+    "answer": "128"
+  },
+  "bigmath-test-2": {
+    "source_sha256": "aebe359425cb315cd6b02498cb5525aefb754c12e2fe1312e18524294b749222",
+    "question": "For positive t, determine the maximum of 4 - t - 25/t.",
+    "answer": "-6"
+  },
+  "bigmath-test-3": {
+    "source_sha256": "058a7c6cded65088c573ba89619df4146a0909c4d38ef1b4bf8d9e37b2936312",
+    "question": "Find the sum of all real y satisfying (y^2 - 7y + 11)^(y^2 + 2y - 63) = 1.",
+    "answer": "8"
+  }
+}
