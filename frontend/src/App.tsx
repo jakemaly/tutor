@@ -16,6 +16,7 @@ import {
   SidebarInset,
   SidebarProvider,
   SidebarTrigger,
+  useSidebar,
 } from "@/components/ui/sidebar";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
@@ -56,17 +57,7 @@ export default function App() {
         <SidebarProvider className="app-shell">
           <ThreadListSidebar />
           <SidebarInset className="app-main">
-            <header className="topbar">
-              <div className="topbar-leading">
-                <SidebarTrigger aria-label="Toggle conversation list" />
-                <a className="brand" href="/" aria-label="Tutor home">
-                  Tutor
-                </a>
-              </div>
-              <button className="new-chat-button" onClick={startNewChat}>
-                <span aria-hidden="true">＋</span> New chat
-              </button>
-            </header>
+            <ChatControls onNewChat={startNewChat} />
             {error && (
               <div className="error-banner" role="alert">
                 <span>{error}</span>
@@ -86,6 +77,22 @@ export default function App() {
         </SidebarProvider>
       </TooltipProvider>
     </AssistantRuntimeProvider>
+  );
+}
+
+function ChatControls({ onNewChat }: { onNewChat: () => void }) {
+  const { open, openMobile, isMobile } = useSidebar();
+
+  return (
+    <header className="chat-controls">
+      <SidebarTrigger
+        aria-label="Toggle conversation list"
+        aria-expanded={isMobile ? openMobile : open}
+      />
+      <button className="new-chat-button" type="button" onClick={onNewChat}>
+        <span aria-hidden="true">＋</span> New chat
+      </button>
+    </header>
   );
 }
 
