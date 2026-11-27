@@ -45,6 +45,13 @@ MODEL_REVISION = "005429cee5cb648998cf2b70eebdd83175989c9a"
 TOKENIZER_REPO = "Qwen/Qwen3.5-9B"
 TOKENIZER_REVISION = "c202236235762e1c871ad0ccb60c8ee5ba337b9a"
 SERVED_MODEL_NAME = "socratic-tutor"
+BASE_MODEL_NAME = "socratic-tutor-base"
+ADAPTER_REVISION = "83e64b4eeb0ec550a0dd839c290a59fcfb802c0f"
+ADAPTER_PATH = f"/cache/runs/jaylen-{ADAPTER_REVISION[:7]}"
+ADAPTER_SHA256 = {
+    "adapter_config.json": "e53585c3c01db38e7ae978be695d8d793167d2dbbe3285c8bcd55c16b186ed2d",
+    "adapter_model.safetensors": "d55a7bc8b180e89704a9dd1721aebba34080ac3b417e3cbebd01f4572e4661c5",
+}
 
 image = (
     modal.Image.from_registry(
@@ -199,6 +206,20 @@ def sync_model_files() -> str:
     return model_dir
 
 
+def validate_adapter(path: str = ADAPTER_PATH) -> None:
+    """Fail closed if the pinned, converted adapter is missing or incomplete."""
+    import hashlib
+    from pathlib import Path
+
+    for name, expected in ADAPTER_SHA256.items():
+        digest = hashlib.sha256()
+        with (Path(path) / name).open("rb") as stream:
+            for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                digest.update(chunk)
+        if digest.hexdigest() != expected:
+            raise ValueError(f"Adapter file failed integrity check: {name}")
+
+
 def vllm_command(model_dir: str) -> list[str]:
     """Return the vLLM server command.
 
@@ -214,7 +235,11 @@ def vllm_command(model_dir: str) -> list[str]:
         "--quantization", "bitsandbytes",
         "--tokenizer", TOKENIZER_REPO,
         "--tokenizer-revision", TOKENIZER_REVISION,
-        "--served-model-name", SERVED_MODEL_NAME,
+        "--served-model-name", BASE_MODEL_NAME,
+        "--enable-lora",
+        "--max-lora-rank", "32",
+        "--max-loras", "1",
+        "--lora-modules", f"{SERVED_MODEL_NAME}={ADAPTER_PATH}",
         "--host", "0.0.0.0",
         "--port", "8000",
         "--download-dir", "/cache/huggingface/hub",
@@ -331,6 +356,7 @@ class SnapshotServer:
 
         _emit("serve_entered", phase="snapshot", **container_clock())
         _emit("cache_state", **_cache_state())
+        validate_adapter()
         model_dir = sync_model_files()
         _emit("model_files_ready", **model_files.safetensors_state(model_dir))
 

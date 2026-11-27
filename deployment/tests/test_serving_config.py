@@ -66,7 +66,10 @@ def test_keeps_tutor_serving_settings(deployment):
     module, _ = deployment
     options = flags(module.vllm_command(MODEL_DIR))
 
-    assert options["--served-model-name"] == "socratic-tutor"
+    assert options["--served-model-name"] == "socratic-tutor-base"
+    assert "--enable-lora" in options
+    assert options["--max-lora-rank"] == "32"
+    assert options["--lora-modules"] == f"socratic-tutor={module.ADAPTER_PATH}"
     assert options["--tokenizer"] == "Qwen/Qwen3.5-9B"
     assert re.fullmatch(r"[0-9a-f]{40}", options["--tokenizer-revision"])
     assert options["--max-model-len"] == "auto"
@@ -136,3 +139,21 @@ def test_keeps_scaling_snapshot_memory_and_endpoint_settings(deployment):
     assert endpoint.kwargs["label"] == "socratic-tutor-qwen-serve"
     assert endpoint.kwargs["requires_proxy_auth"] is True
     assert endpoint.kwargs["startup_timeout"] == 900
+
+
+def test_adapter_integrity_fails_closed(deployment, tmp_path, monkeypatch):
+    import hashlib
+
+    module, _ = deployment
+    good = b"trained adapter"
+    (tmp_path / "adapter_model.safetensors").write_bytes(good)
+    monkeypatch.setattr(module, "ADAPTER_SHA256", {
+        "adapter_model.safetensors": hashlib.sha256(good).hexdigest()
+    })
+    module.validate_adapter(str(tmp_path))
+    (tmp_path / "adapter_model.safetensors").write_bytes(b"incomplete")
+    with pytest.raises(ValueError, match="integrity"):
+        module.validate_adapter(str(tmp_path))
+    (tmp_path / "adapter_model.safetensors").unlink()
+    with pytest.raises(FileNotFoundError):
+        module.validate_adapter(str(tmp_path))
