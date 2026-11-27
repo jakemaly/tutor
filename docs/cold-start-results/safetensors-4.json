@@ -1,0 +1,221 @@
+{
+  "label": "safetensors",
+  "trial": 4,
+  "prompt": "What does the derivative of a function tell us? Answer in two sentences.",
+  "started_utc": "2026-11-19T02:25:29.726666+00:00",
+  "t0_wall": 1795055129.7266753,
+  "clock": {
+    "local_minus_ntp": 0.0688,
+    "round_trip": 0.0278
+  },
+  "seconds_waited_for_scale_down": 36.6,
+  "containers_before": 0,
+  "containers_seen": [
+    {
+      "container_id": "ta-01M7RSZ5EPMVY2EDPH7BNAZGWR",
+      "app_id": "ap-oNLJqE6e1coUAI4Nbd7Hhb",
+      "app_name": "socratic-tutor-qwen",
+      "start_time": "Pending",
+      "seen": 1.48
+    }
+  ],
+  "task_ids": [
+    "ta-01M7RSZ5EPMVY2EDPH7BNAZGWR"
+  ],
+  "new_task_id": true,
+  "client": {
+    "first": {
+      "text": 12.9409,
+      "empty_text": 16.3754
+    },
+    "answer_chars": 300,
+    "errors": [],
+    "headers": 0.011,
+    "status": 200,
+    "end": 16.3754
+  },
+  "relay": [
+    {
+      "method": "POST",
+      "path": "/v1/chat/completions",
+      "received": 0.0202,
+      "first": {
+        "role": 12.9142,
+        "content": 12.9382,
+        "finish": 16.3621,
+        "done": 16.3723
+      },
+      "forwarded": 0.1686,
+      "headers": 12.6527,
+      "status": 200,
+      "first_byte": 12.9142,
+      "end": 16.3724
+    }
+  ],
+  "container_events": [
+    {
+      "boot_wall": 1795054497.67,
+      "event": "restored",
+      "modal_cloud_provider": "CLOUD_PROVIDER_AWS",
+      "modal_image_id": "im-J87pc1JJAQwOwc6AG517LN",
+      "modal_region": "us-east",
+      "modal_task_id": "ta-01M7RSZ5EPMVY2EDPH7BNAZGWR",
+      "mono": 118.3532,
+      "process_start_wall": 1795054498.35,
+      "rx_bytes": 552,
+      "snapshot_id": "583daf955cba",
+      "snapshot_task_id": "ta-01M7RSBPJWGN017FSC8VF8Q8QR",
+      "wall": 1795055141.4424,
+      "log_task_id": "ta-01M7RSZ5EPMVY2EDPH7BNAZGWR"
+    },
+    {
+      "boot_wall": 1795054497.665,
+      "event": "awake",
+      "modal_cloud_provider": "CLOUD_PROVIDER_AWS",
+      "modal_image_id": "im-J87pc1JJAQwOwc6AG517LN",
+      "modal_region": "us-east",
+      "modal_task_id": "ta-01M7RSZ5EPMVY2EDPH7BNAZGWR",
+      "mono": 119.0664,
+      "process_start_wall": 1795054498.345,
+      "rx_bytes": 552,
+      "wall": 1795055142.1556,
+      "log_task_id": "ta-01M7RSZ5EPMVY2EDPH7BNAZGWR"
+    },
+    {
+      "event": "gpu",
+      "gpu": "NVIDIA L40S, 46068 MiB",
+      "modal_cloud_provider": "CLOUD_PROVIDER_AWS",
+      "modal_image_id": "im-J87pc1JJAQwOwc6AG517LN",
+      "modal_region": "us-east",
+      "modal_task_id": "ta-01M7RSZ5EPMVY2EDPH7BNAZGWR",
+      "mono": 119.0935,
+      "wall": 1795055142.1827,
+      "log_task_id": "ta-01M7RSZ5EPMVY2EDPH7BNAZGWR"
+    },
+    {
+      "boot_wall": 1795054497.668,
+      "cache_state": {
+        "flashinfer_cache": {
+          "bytes": 0,
+          "exists": true,
+          "files": 1
+        },
+        "safetensors": {
+          "bytes": 19306310880,
+          "exists": true,
+          "files": 4
+        },
+        "tokenizer_snapshot": {
+          "bytes": 23082781,
+          "exists": true,
+          "files": 12
+        },
+        "triton_cache": {
+          "bytes": 55858909,
+          "exists": true,
+          "files": 1111
+        },
+        "vllm_cache": {
+          "bytes": 944,
+          "exists": true,
+          "files": 1
+        }
+      },
+      "event": "first_token_observed",
+      "modal_cloud_provider": "CLOUD_PROVIDER_AWS",
+      "modal_image_id": "im-J87pc1JJAQwOwc6AG517LN",
+      "modal_region": "us-east",
+      "modal_task_id": "ta-01M7RSZ5EPMVY2EDPH7BNAZGWR",
+      "mono": 119.8294,
+      "poll_interval": 0.1,
+      "prefill_seconds": -0.0,
+      "process_start_wall": 1795054498.348,
+      "prompt_tokens": 617.0,
+      "queue_seconds": 0.0,
+      "requests": 1.0,
+      "rx_bytes": 552,
+      "ttft_seconds": 0.269682,
+      "wall": 1795055142.9186,
+      "log_task_id": "ta-01M7RSZ5EPMVY2EDPH7BNAZGWR"
+    }
+  ],
+  "vllm_milestones": {},
+  "snapshot_log": [
+    "ta-01M7RSZ5EPMVY2EDPH7BNAZGWR Restoring Function from memory snapshot."
+  ],
+  "summary": {
+    "label": "safetensors",
+    "trial": 4,
+    "task_id": "ta-01M7RSZ5EPMVY2EDPH7BNAZGWR",
+    "gpu": "NVIDIA L40S, 46068 MiB",
+    "ttft_seconds": 12.9409,
+    "snapshot": {
+      "mode": "restored",
+      "snapshot_id": "583daf955cba",
+      "snapshot_task_id": "ta-01M7RSBPJWGN017FSC8VF8Q8QR",
+      "restored_task_id": "ta-01M7RSZ5EPMVY2EDPH7BNAZGWR",
+      "restored_from_other_container": true,
+      "modal_log": [
+        "ta-01M7RSZ5EPMVY2EDPH7BNAZGWR Restoring Function from memory snapshot."
+      ]
+    },
+    "cold": {
+      "no_containers_before_request": true,
+      "new_task_id": true,
+      "restore_began_after_request": true
+    },
+    "cache": {
+      "weights_format": null,
+      "weights_cached": null,
+      "tokenizer_cached": null,
+      "kernel_cache_files_before": 0,
+      "network_mb_until_ready": 0.0
+    },
+    "engine": {
+      "ttft_seconds": 0.269682,
+      "queue_seconds": 0.0,
+      "prefill_seconds": -0.0,
+      "prompt_tokens": 617.0
+    },
+    "tool_call_before_answer": false,
+    "errors": [],
+    "stages": [
+      {
+        "key": "local_backend",
+        "label": "Local backend until upstream request",
+        "seconds": 0.02,
+        "basis": "same-clock"
+      },
+      {
+        "key": "provisioning_restore",
+        "label": "Modal routing, GPU scheduling, snapshot restore",
+        "seconds": 11.764,
+        "basis": "cross-host"
+      },
+      {
+        "key": "wake_up",
+        "label": "vLLM wake_up: weights to GPU, KV cache",
+        "seconds": 0.713,
+        "basis": "container"
+      },
+      {
+        "key": "first_token",
+        "label": "Held request until first token in engine",
+        "seconds": 0.763,
+        "basis": "container"
+      },
+      {
+        "key": "return_path",
+        "label": "First token back to relay",
+        "seconds": -0.322,
+        "basis": "cross-host"
+      },
+      {
+        "key": "backend_stream",
+        "label": "Relay through backend to client text",
+        "seconds": 0.003,
+        "basis": "same-clock"
+      }
+    ]
+  }
+}

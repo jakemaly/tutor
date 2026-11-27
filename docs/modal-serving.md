@@ -2,7 +2,7 @@
 
 
 
-This deployment serves Unsloth’s Qwen3.5-9B Q4_K_M checkpoint through vLLM. The tutor connects to it through an authenticated OpenAI-compatible endpoint.
+This deployment serves Qwen3.5-9B through vLLM, using Unsloth’s Safetensors weights (`unsloth/Qwen3.5-9B`, pinned revision). The weights in that repository are unquantized (BF16, about 19.3 GB). vLLM quantizes them to 4-bit with BitsAndBytes while it loads them (in-flight quantization), through the `vllm-bnb-plugin` that vLLM 0.32.0 requires for BitsAndBytes. Only Safetensors files are downloaded and served; the server refuses to start if weights in any other format are present. The tokenizer and chat template are the official `Qwen/Qwen3.5-9B` ones. The tutor connects to it through an authenticated OpenAI-compatible endpoint.
 
 
 
@@ -26,7 +26,19 @@ python -m venv deployment/.venv
 
 
 
-Set a $30 workspace usage limit in Modal before deploying. Then deploy the server (it restores from a GPU memory snapshot, see [Cold starts](#cold-starts)):
+Set a $30 workspace usage limit in Modal before deploying. The first time, or after changing the model revision, download the weights onto the `socratic-tutor-model-cache` Volume with a CPU-only job, so the first GPU cold start does not spend paid GPU time on the download (about 2 minutes for 19.3 GB):
+
+
+
+```powershell
+
+.\deployment\.venv\Scripts\python.exe -m modal run deployment/modal_qwen.py::download_model
+
+```
+
+
+
+Then deploy the server (it restores from a GPU memory snapshot, see [Cold starts](#cold-starts)):
 
 
 
@@ -104,11 +116,11 @@ Run `docker compose stop` to stop the local tutor.
 
 
 
-Weights and tokenizer files load from the `socratic-tutor-model-cache` Volume; nothing is downloaded on a cold start. vLLM's compiled Triton kernels are kept on the same Volume in `/triton-cache`, so only the first cold start after a vLLM or Triton change compiles them (about 60 s extra). The vLLM server is started with `--enable-auto-tool-choice --tool-call-parser qwen3_xml` because the tutor sends a `load_skill` tool with every request.
+Weights and tokenizer files load from the `socratic-tutor-model-cache` Volume; nothing is downloaded on a cold start once `download_model` has run. If the weights are missing, the first GPU cold start downloads them itself. A full startup reads the four BF16 Safetensors shards and quantizes them to 4-bit (about 18 s on an L40S, about 7.7 GiB on the GPU afterwards). Existing GGUF files from the earlier deployment stay on the Volume but are no longer read. vLLM's compiled Triton kernels are kept on the same Volume in `/triton-cache`, so only the first cold start after a vLLM or Triton change compiles them (about 60 s extra). The vLLM server is started with `--enable-auto-tool-choice --tool-call-parser qwen3_xml` because the tutor sends a `load_skill` tool with every request.
 
 
 
-The server starts vLLM, warms it up, and puts it to sleep before Modal saves a GPU memory snapshot of the container. Later cold starts restore that snapshot and only copy the weights back to the GPU. Redeploying with new code or configuration makes the previous snapshots obsolete, and Modal may create several compatible snapshots per GPU type (L4 and L40S). The first few cold starts after such a deploy therefore take the full startup path plus about 8 s to create a snapshot. In our tests every redeploy changed the code and was followed by new snapshots; redeploying unchanged code was not tested. GPU memory snapshots are an alpha Modal feature. vLLM's sleep and wake routes need `VLLM_SERVER_DEV_MODE=1`, which also adds vLLM's other administrative routes. A route guard ([deployment/vllm_route_guard.py](../deployment/vllm_route_guard.py)) runs inside vLLM, so proxy-token holders can reach only `POST /v1/chat/completions`, `GET /v1/models`, and `GET /health`. Every other route, including `/metrics`, `/sleep`, and `/wake_up`, answers 404 unless the request carries a token that the container generates at startup and uses only for its own sleep and wake calls.
+The server starts vLLM, warms it up, and puts it to sleep before Modal saves a GPU memory snapshot of the container. Later cold starts restore that snapshot and only copy the weights back to the GPU. Redeploying with new code or configuration makes the previous snapshots obsolete, and Modal may create several compatible snapshots per GPU type (L4 and L40S). The first few cold starts after such a deploy therefore take the full startup path plus about 8 s to create a snapshot. In our tests every redeploy changed the code and was followed by new snapshots; redeploying unchanged code was not tested. GPU memory snapshots are an alpha Modal feature. If a restore fails, Modal logs `Transient snapshot error: failed to restore container from snapshot ... Will retry with no snapshots.` and starts the container normally instead (about 2 minutes on an L40S). This happened once in four cold starts with the Safetensors model (exit code 137). Just before it, the restored vLLM process crashed in PyTorch's NCCL heartbeat monitor with `DistStoreError: Bad file descriptor` from a `FileStore` lock. Why the descriptor was invalid after that restore is not yet known. As a workaround, the vLLM subprocess runs with `TORCH_NCCL_DUMP_ON_TIMEOUT=0`, which stops that periodic store poll (it gives up flight-recorder debug dumps after a collective timeout). In 7 further cold starts with the workaround (2 snapshot creations on L40S and L4, 5 restores on L40S), no restore failed. That shows no recurrence in those trials, not that restores cannot fail; see [Modal cold-start benchmark](cold-start-benchmark.md). vLLM's sleep and wake routes need `VLLM_SERVER_DEV_MODE=1`, which also adds vLLM's other administrative routes. A route guard ([deployment/vllm_route_guard.py](../deployment/vllm_route_guard.py)) runs inside vLLM, so proxy-token holders can reach only `POST /v1/chat/completions`, `GET /v1/models`, and `GET /health`. Every other route, including `/metrics`, `/sleep`, and `/wake_up`, answers 404 unless the request carries a token that the container generates at startup and uses only for its own sleep and wake calls.
 
 
 

@@ -1,7 +1,12 @@
 """Serve the tutor's model on Modal from a GPU memory snapshot.
 
-A restored cold start skips vLLM's imports, GGUF parsing, model load, and CUDA/kernel setup;
-see docs/cold-start-benchmark.md for the measurements.
+The model is unsloth/Qwen3.5-9B: higher-precision Safetensors weights that vLLM quantizes to
+4-bit with BitsAndBytes while loading (in-flight quantization, through vllm-bnb-plugin).
+Only Safetensors files are downloaded, and model_files.check_safetensors_only() refuses to
+start if weights in any other format are present.
+
+A restored cold start skips vLLM's imports, model load and quantization, and CUDA/kernel
+setup; see docs/cold-start-benchmark.md for the measurements.
 
 - vLLM is started in a `snap=True` hook with `--enable-sleep-mode`, warmed up, and put to
   sleep (level 1: weights copied to host memory, KV cache freed) before Modal snapshots the
@@ -25,19 +30,21 @@ import time
 import uuid
 
 import modal
+import model_files
 import vllm_route_guard
 
 app = modal.App("socratic-tutor-qwen")
 
-MODEL_REPO = "unsloth/Qwen3.5-9B-GGUF"
-MODEL_FILE = "Qwen3.5-9B-Q4_K_M.gguf"
-MODEL_REVISION = "42c29f9ead88634cbc48378a71d1f55f7c76ad70"
+# Unquantized (BF16) Safetensors, quantized to 4-bit by BitsAndBytes while loading. Weights,
+# config, and image processor come from here.
+MODEL_REPO = "unsloth/Qwen3.5-9B"
+MODEL_REVISION = "005429cee5cb648998cf2b70eebdd83175989c9a"
 
+# The tokenizer and chat template stay the official Qwen ones the tutor was validated with
+# (vLLM resolves the chat template from the tokenizer path).
 TOKENIZER_REPO = "Qwen/Qwen3.5-9B"
 TOKENIZER_REVISION = "c202236235762e1c871ad0ccb60c8ee5ba337b9a"
 SERVED_MODEL_NAME = "socratic-tutor"
-
-GGUF_PLUGIN_REVISION = "e454affe0ca23c9dc8754ec3033270cb30622ed5"
 
 image = (
     modal.Image.from_registry(
@@ -52,24 +59,10 @@ image = (
         "wheel",
         "setuptools>=77.0.3,<81",
     )
-    .env({
-        "CC": "/usr/bin/gcc",
-        "CXX": "/usr/bin/g++",
-        "TORCH_CUDA_ARCH_LIST": "8.9",
-        "MAX_JOBS": "2",
-    })
-    .pip_install(
-        "vllm-gguf-plugin @ "
-        "git+https://github.com/vllm-project/vllm-gguf-plugin.git"
-        f"@{GGUF_PLUGIN_REVISION}",
-        extra_options="--no-build-isolation",
-    )
-    .run_commands(
-        # Compatibility fix for vLLM 0.32.0 (GGUF plugin PR #148).
-        r"sed -i -E 's/^from vllm\.transformers_utils\.configs\.qwen3_5(_moe)? import /from transformers import /' "
-        "/usr/local/lib/python3.12/site-packages/vllm_gguf_plugin/weights_adapter/qwen3_5.py",
-        "python -c 'from vllm_gguf_plugin import register'",
-    )
+    # vLLM 0.32.0 provides BitsAndBytes through this out-of-tree plugin; vLLM's own CI tests
+    # it with `vllm-bnb-plugin >= 0.0.1`. The plugin requires bitsandbytes>=0.48.1.
+    .pip_install("vllm-bnb-plugin==0.0.3", "bitsandbytes==0.50.2")
+    .run_commands("python -c 'import bitsandbytes, vllm_bnb_plugin'")
 )
 
 model_cache = modal.Volume.from_name(
@@ -79,13 +72,10 @@ model_cache = modal.Volume.from_name(
 
 
 HF_HUB_DIR = "/cache/huggingface/hub"
-MODEL_SNAPSHOT = (
-    f"{HF_HUB_DIR}/models--unsloth--Qwen3.5-9B-GGUF/snapshots/{MODEL_REVISION}"
-)
+MODEL_SNAPSHOT = f"{HF_HUB_DIR}/models--unsloth--Qwen3.5-9B/snapshots/{MODEL_REVISION}"
 TOKENIZER_SNAPSHOT = (
     f"{HF_HUB_DIR}/models--Qwen--Qwen3.5-9B/snapshots/{TOKENIZER_REVISION}"
 )
-CONFIG_DIR = "/cache/qwen-config"
 # vLLM compiles about 1,100 Triton kernel files while profiling Qwen3.5; keeping them on the
 # Volume lets later cold containers load them instead of recompiling (about 60 s on L40S).
 # Triton keys entries by kernel source, Triton version, and GPU target (L4 and L40S: sm_89).
@@ -96,13 +86,11 @@ def _cache_state() -> dict:
     """Report which model files and compiled-kernel caches exist before vLLM starts."""
     from pathlib import Path
 
-    from cold_start_timing import directory_state, file_state
+    from cold_start_timing import directory_state
 
     return {
-        "gguf": file_state(f"{MODEL_SNAPSHOT}/{MODEL_FILE}"),
-        "mmproj": file_state(f"{MODEL_SNAPSHOT}/mmproj-BF16.gguf"),
+        "safetensors": model_files.safetensors_state(MODEL_SNAPSHOT),
         "tokenizer_snapshot": directory_state(TOKENIZER_SNAPSHOT),
-        "config_dir": directory_state(CONFIG_DIR),
         "triton_cache": directory_state(TRITON_CACHE_DIR),
         "flashinfer_cache": directory_state(
             Path(os.environ.get("FLASHINFER_WORKSPACE_BASE", Path.home())) / ".cache/flashinfer"
@@ -192,19 +180,26 @@ def _watch_startup(process, emit, baseline: dict, headers: dict) -> None:
         time.sleep(0.1)
 
 
-def sync_tokenizer_config() -> str:
-    """Return the pinned tokenizer/config directory on the Volume, fetching only missing files."""
+def sync_model_files() -> str:
+    """Return the pinned model snapshot on the Volume, downloading only missing files.
+
+    Only Safetensors weights, their index, and config/tokenizer/processor files are fetched
+    (about 19.3 GB of BF16 weights on the first run). Raises if the directory holds weights in
+    any other format, so vLLM never sees them.
+    """
     from huggingface_hub import snapshot_download
 
-    return snapshot_download(
-        repo_id=TOKENIZER_REPO,
-        revision=TOKENIZER_REVISION,
-        allow_patterns=["*.json", "*.jinja", "*.txt"],
-        local_dir=CONFIG_DIR,
+    model_dir = snapshot_download(
+        repo_id=MODEL_REPO,
+        revision=MODEL_REVISION,
+        allow_patterns=list(model_files.ALLOW_PATTERNS),
+        cache_dir=HF_HUB_DIR,
     )
+    model_files.check_safetensors_only(model_dir)
+    return model_dir
 
 
-def vllm_command(config_dir: str) -> list[str]:
+def vllm_command(model_dir: str) -> list[str]:
     """Return the vLLM server command.
 
     There is no fixed output cap, and the tool-call flags let vLLM parse the tutor's
@@ -213,11 +208,12 @@ def vllm_command(config_dir: str) -> list[str]:
     return [
         "vllm",
         "serve",
-        f"{MODEL_REPO}:Q4_K_M",
-        "--revision", MODEL_REVISION,
+        model_dir,
+        # In-flight 4-bit quantization of the BF16 Safetensors (vllm-bnb-plugin). The plugin
+        # sets the bitsandbytes load format, which reads `*.safetensors` when present.
+        "--quantization", "bitsandbytes",
         "--tokenizer", TOKENIZER_REPO,
         "--tokenizer-revision", TOKENIZER_REVISION,
-        "--hf-config-path", config_dir,
         "--served-model-name", SERVED_MODEL_NAME,
         "--host", "0.0.0.0",
         "--port", "8000",
@@ -236,6 +232,25 @@ def vllm_command(config_dir: str) -> list[str]:
         # Hide dev-mode routes from callers outside the container.
         "--middleware=vllm_route_guard.RouteGuard",
     ]
+
+
+# Environment for the vLLM subprocess only, applied before it initializes torch.distributed
+# (and so before warmup, sleep, and the snapshot). The Modal container's own environment is
+# unchanged.
+VLLM_ENV = {
+    "TRITON_CACHE_DIR": TRITON_CACHE_DIR,
+    "VLLM_SERVER_DEV_MODE": "1",
+    # Modal's guidance for Torch compilation inside a snapshot.
+    "TORCHINDUCTOR_COMPILE_THREADS": "1",
+    # Workaround; root cause unconfirmed. One snapshot restore crashed when PyTorch's NCCL
+    # heartbeat monitor polled vLLM's file-based store (FileStore under /tmp) and flock()
+    # failed with "Bad file descriptor"; the throw from FileStore's lock destructor ended the
+    # process. In torch 2.13.0 that 1-second poll runs only while TORCH_NCCL_DUMP_ON_TIMEOUT
+    # is enabled, so this turns it off. Lost: flight-recorder dumps after a collective timeout
+    # (diagnostics only on this single-GPU server). TORCH_NCCL_ENABLE_MONITORING stays on: it
+    # does not stop the poll, only the kill on a hung watchdog, which we keep.
+    "TORCH_NCCL_DUMP_ON_TIMEOUT": "0",
+}
 
 
 # Short requests that run the text and tool-calling paths once before the snapshot, so any
@@ -270,10 +285,25 @@ def _emit(event: str, **fields) -> None:
     print(timing_line(event, **fields), flush=True)
 
 
+serving_image = image.env({"HF_HOME": "/cache/huggingface"}).add_local_python_source(
+    "cold_start_timing", "model_files", "vllm_route_guard"
+)
+
+
+@app.function(image=serving_image, volumes={"/cache": model_cache}, cpu=2, timeout=3600)
+def download_model() -> None:
+    """Fetch the pinned Safetensors snapshot onto the Volume without a GPU.
+
+    Run `modal run deployment/modal_qwen.py::download_model` after changing MODEL_REVISION, so
+    the first GPU cold start does not spend paid GPU time downloading about 19.3 GB.
+    """
+    model_dir = sync_model_files()
+    model_cache.commit()
+    print(f"Safetensors ready: {model_files.safetensors_state(model_dir)}", flush=True)
+
+
 @app.cls(
-    image=image.env({"HF_HOME": "/cache/huggingface"}).add_local_python_source(
-        "cold_start_timing", "vllm_route_guard"
-    ),
+    image=serving_image,
     gpu=["L4", "L40S"],
     cpu=2,
     # A reservation (guaranteed RAM), not a limit; all live tests passed with this value. One
@@ -301,8 +331,8 @@ class SnapshotServer:
 
         _emit("serve_entered", phase="snapshot", **container_clock())
         _emit("cache_state", **_cache_state())
-        config_dir = sync_tokenizer_config()
-        _emit("tokenizer_config_ready")
+        model_dir = sync_model_files()
+        _emit("model_files_ready", **model_files.safetensors_state(model_dir))
 
         # Only this process and vLLM know the token; it is kept in memory and in the snapshot.
         token = secrets.token_urlsafe(32)
@@ -312,15 +342,12 @@ class SnapshotServer:
         python_path = os.pathsep.join(filter(None, [guard_dir, os.environ.get("PYTHONPATH")]))
 
         self.process = subprocess.Popen(
-            vllm_command(config_dir),
+            vllm_command(model_dir),
             env={
                 **os.environ,
-                "TRITON_CACHE_DIR": TRITON_CACHE_DIR,
-                "VLLM_SERVER_DEV_MODE": "1",
+                **VLLM_ENV,
                 vllm_route_guard.TOKEN_ENV: token,
                 "PYTHONPATH": python_path,
-                # Modal's guidance for Torch compilation inside a snapshot.
-                "TORCHINDUCTOR_COMPILE_THREADS": "1",
             },
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,

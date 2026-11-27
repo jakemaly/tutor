@@ -172,9 +172,30 @@ def test_describe_trial_reports_gpu_cache_and_cold_checks():
     assert summary["gpu"].startswith("NVIDIA L4")
     assert summary["ttft_seconds"] == 200.0
     assert all(summary["cold"].values())
-    assert summary["cache"]["gguf_cached"] is True
+    # The synthetic trial has the historical GGUF cache fields.
+    assert summary["cache"]["weights_cached"] is True
+    assert summary["cache"]["weights_format"] == "gguf"
     assert summary["cache"]["network_mb_until_ready"] == 2.0
     assert summary["tool_call_before_answer"] is False
+
+
+def test_safetensors_trial_uses_model_files_event_and_weight_cache():
+    """Safetensors runs log model_files_ready and a safetensors cache entry instead."""
+    trial = synthetic_trial()
+    for event in trial["container_events"]:
+        if event["event"] == "cache_state":
+            event.pop("gguf")
+            event["safetensors"] = {"exists": False, "reason": "No Safetensors weights"}
+        elif event["event"] == "tokenizer_config_ready":
+            event["event"] = "model_files_ready"
+
+    stages = {stage["key"]: stage["seconds"] for stage in compute_stages(trial)}
+    summary = describe_trial(trial)
+
+    assert stages["tokenizer_sync"] == pytest.approx(0.9)  # cache_state 500.1 -> files 501.0
+    assert sum(stages.values()) == pytest.approx(200.0)
+    assert summary["cache"]["weights_format"] == "safetensors"
+    assert summary["cache"]["weights_cached"] is False
 
 
 def test_missing_stage_boundary_is_reported_not_guessed():

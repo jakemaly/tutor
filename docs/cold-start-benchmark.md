@@ -20,6 +20,13 @@ settings in the consolidated snapshot server) was checked separately for correct
 re-benchmarked: see
 [Validation with the token-limit settings](#validation-with-the-token-limit-settings-2026-11-18).
 
+**Model format: historical GGUF results.** Every run before the
+[Safetensors section](#safetensors-with-in-flight-bitsandbytes-50-2026-11-19) served the
+GGUF checkpoint `unsloth/Qwen3.5-9B-GGUF` (Q4_K_M) through the vLLM GGUF plugin. Those
+results are kept as measured and are historical. Issue #50 replaced GGUF with Safetensors
+weights that BitsAndBytes quantizes to 4-bit while loading, and removed the GGUF loader.
+GGUF and Safetensors timings come from different runs and are not a controlled comparison.
+
 Raw results: [docs/cold-start-results/](cold-start-results/) (one JSON file per trial).
 
 ## Summary
@@ -58,6 +65,19 @@ A final validation on 2026-11-18 deployed the consolidated server with #48's set
 L40S, with no memory errors, and the feature and route-guard checks passed. It was a
 correctness check, not a new benchmark
 ([details](#validation-with-the-token-limit-settings-2026-11-18)).
+
+On 2026-11-19 the deployment switched to Safetensors weights with in-flight 4-bit
+BitsAndBytes quantization (#50). On an L40S, model loading and quantization took 18.1 s.
+Two snapshot restores reached the first answer in 12.6 s and 12.9 s. One restore attempt
+failed and fell back to a full startup. These were 4 trials on one GPU type, a correctness
+check rather than a benchmark
+([details](#safetensors-with-in-flight-bitsandbytes-50-2026-11-19)).
+
+That failed restore was a crash in PyTorch's NCCL heartbeat monitor. After the workaround
+`TORCH_NCCL_DUMP_ON_TIMEOUT=0`, 7 more cold starts gave 2 snapshot creations (one on L40S,
+one on L4) and 5 verified L40S restores (4.8–15.5 s), with no failure or fallback. That
+means no recurrence was observed in these trials; it does not prove restores cannot fail
+([details](#validation-of-the-nccl-workaround-2026-11-19)).
 
 ## Triton kernel cache
 
@@ -141,7 +161,8 @@ cache it had just produced, it took 13.5 s, and the first request dropped from 3
   parameters, then the weight iterator. About 58 s of the ~79 s model-load stage is the five
   redundant parses. This is the next candidate. A per-process reader cache would need a hook
   inside vLLM's processes, so it was left out of this change. A memory snapshot (below)
-  skips this parsing on restored starts without changing vLLM.
+  skips this parsing on restored starts without changing vLLM. (Historical: #50 removed the
+  GGUF loader, so this parsing no longer happens.)
 
 ## Memory snapshot experiment
 
@@ -520,6 +541,244 @@ one deployment was enough. A restored cold start removes about 145 s on an L40S.
 persistent Triton cache stays, because snapshot creation still runs the full startup. If
 GPU snapshots misbehave, the plain deployment can be restored from the Git history.
 
+## Safetensors with in-flight BitsAndBytes (#50, 2026-11-19)
+
+Issue #50 replaced the GGUF checkpoint and loader. The settings:
+
+- **Weights:** `unsloth/Qwen3.5-9B` at revision `005429c`. These are unquantized BF16
+  Safetensors (4 shards, 19,306,310,880 bytes) with no `quantization_config`, so they are
+  not pre-quantized.
+- **Quantization while loading:** vLLM quantizes the weights to 4-bit as it loads them
+  (`--quantization bitsandbytes`). vLLM 0.32.0 provides BitsAndBytes only through the
+  out-of-tree `vllm-bnb-plugin`, pinned to 0.0.3 with `bitsandbytes` 0.50.2. vLLM's own CI
+  tests that plugin on L4 and H200. The plugin forces its own load format, which reads
+  `*.safetensors` before `*.bin` or `*.pt`.
+- **Safetensors only:** the server downloads only Safetensors, configs, tokenizer, and
+  processor files. `model_files.check_safetensors_only()` refuses to start if weights in any
+  other format are present.
+- **Tokenizer and chat template:** still the official `Qwen/Qwen3.5-9B` ones.
+- **Unchanged:** the alias, the endpoint URL and its label, proxy auth, the route guard,
+  tool calling, disabled thinking, `--max-model-len auto`, no output cap, snapshots,
+  `min_containers=0`, the 60 s scale-down window, and `memory=16384`.
+
+This was a bounded correctness check, not a benchmark: 4 cold trials, all on L40S. Results:
+`safetensors-1..4.json` and the filtered vLLM log lines in `safetensors-vllm.log`.
+
+**Initial download (CPU only, no GPU).** `modal run deployment/modal_qwen.py::download_model`
+fetched the 16 files in 75 s (105 s including container start) and passed the
+Safetensors-only check. Afterwards, every GPU cold start received 0 MB over the network
+before vLLM was ready.
+
+| Trial | Mode | GPU | TTFT | Notes |
+|---|---|---|---|---|
+| safetensors-1 | created | L40S | 121.1 s | Full startup with quantization; snapshot created |
+| safetensors-2 | restored (from safetensors-1) | L40S | **12.6 s** | Verified cold restore |
+| safetensors-3 | restore failed, full startup | L40S | 109.9 s | Modal: `Transient snapshot error: failed to restore container from snapshot with exit code 137. Will retry with no snapshots.` |
+| safetensors-4 | restored (from safetensors-1) | L40S | **12.9 s** | Verified cold restore |
+
+Both restores passed every check in [How restores were verified](#how-restores-were-verified).
+The failed restore is the first one seen in any run. All four containers ran on the same
+provider, region (AWS `us-east`), and image, and trials 2–4 all restored the same snapshot.
+
+**What the logs confirm about the failed restore:**
+
+1. Modal logged `Restoring Function from memory snapshot.`
+2. 3 s later, the restored vLLM process logged `terminate called after throwing an
+   instance of 'c10::DistStoreError'`, `what(): Bad file descriptor`, `Exception raised
+   from flock at .../c10d/FileStore.cpp:134`. The stack was in
+   `c10d::ProcessGroupNCCL::HeartbeatMonitor::runLoop()`. Its log clock read +104.6 s,
+   continuing from the snapshot, whose sleep happened at +102.9 s.
+3. 1 s later, Modal logged `Transient snapshot error: failed to restore container from
+   snapshot with exit code 137. Will retry with no snapshots.`
+4. The same container then ran the full startup and answered. No new snapshot was
+   captured (`snapshot` stage 0.0 s).
+
+**What torch 2.13.0's source shows:** the heartbeat monitor thread periodically polls the
+process group's store. Its `check()` call is inside a `try`/`catch`. However, `FileStore`'s
+`Lock` destructor calls `flock(LOCK_UN)`, which throws on failure, and an exception thrown
+from a destructor ends the program (`std::terminate`). That matches the log.
+
+**Not confirmed:**
+
+- **Why the descriptor was invalid** only after this restore. One hypothesis is that the
+  store's file descriptor is not valid across this restore, and that the monitor's polling
+  timing decides whether it is hit.
+- **Whether GGUF had the same risk.** GGUF used the same torch and vLLM, and 0 of its 18
+  recorded restores failed, but its full logs were not saved.
+- **Memory.** Exit code 137 is Modal's report for the restore attempt. No out-of-memory
+  message appears, and the process had already aborted on its own. Memory pressure is not
+  supported by the logs, but cannot be ruled out entirely.
+
+**Workaround:** the vLLM subprocess now runs with `TORCH_NCCL_DUMP_ON_TIMEOUT=0`. It is set
+before vLLM initializes torch.distributed, so it is already in effect when the snapshot is
+taken. The root cause remains unconfirmed. Live results are in
+[Validation of the NCCL workaround](#validation-of-the-nccl-workaround-2026-11-19).
+
+The choice comes from torch 2.13.0's `ProcessGroupNCCL.cpp`:
+
+- **Why this setting:** the heartbeat monitor polls the global store every 1 s
+  (`TORCH_NCCL_COORD_CHECK_MILSEC`) only while `TORCH_NCCL_DUMP_ON_TIMEOUT` is on (its
+  default). That poll is the only periodic store access active by default;
+  `TORCH_NCCL_PROPAGATE_ERROR` is off.
+- **Why not `TORCH_NCCL_ENABLE_MONITORING=0`:** the monitor thread starts regardless, and
+  that setting only replaces the process kill after a detected watchdog hang with a log
+  line. It would not stop the poll and would remove the hang protection, so it is not used.
+- **What is given up:** flight-recorder debug dumps after a collective timeout or exception,
+  and the cross-rank "should dump" signal. On a single-GPU server these are diagnostics
+  only. The watchdog's error handling and the kill on a hung watchdog remain.
+- **Why the store is a FileStore:** vLLM 0.32.0's single-GPU executor initializes
+  torch.distributed with `file://<tempdir>/vllm_dist_<uuid>`. A TCP store is only selected
+  for ROCm AITER, so it is not a supported option here.
+
+The full startups' stages (trials 1 and 3):
+
+| Stage | safetensors-1 | safetensors-3 |
+|---|---|---|
+| vllm_import | 21.8 s | 19.2 s |
+| engine_spawn | 43.9 s | 39.8 s |
+| model_load (read 4 shards and quantize to 4-bit) | 18.1 s | 21.4 s |
+| engine_init | 13.2 s | 13.2 s |
+| warmup + sleep + snapshot | 1.9 + 1.9 + 3.6 s | 1.8 + 1.8 + 0.0 s |
+
+**Runtime evidence that Safetensors are loaded as 4-bit and the GGUF loader is absent:**
+
+- **Loader:** vLLM logged `Registered model loader ... vllm_bnb_plugin.bitsandbytes_loader.BitsAndBytesModelLoader
+  with load format bitsandbytes`, and its start-up arguments included `'quantization': 'bitsandbytes'`.
+- **Quantization configuration:** the engine configuration logged `quantization=bitsandbytes`,
+  `load_format=bitsandbytes`, `dtype=torch.bfloat16`, and `quantization_config=None`, so the
+  checkpoint is not pre-quantized. In vllm-bnb-plugin 0.0.3, that combination selects
+  `BitsAndBytesConfig(load_in_4bit=True, load_in_8bit=False)` and the in-flight weight path.
+  That path calls `bitsandbytes.functional.quantize_4bit(..., quant_type="nf4",
+  compress_statistics=True)` for each targeted linear weight; other weights stay BF16. The
+  parameters' quantization state was not inspected at runtime.
+- **Files read:** `Loading safetensors checkpoint shards: 4/4` (13 s) from the pinned
+  snapshot directory, which contained only 4 `.safetensors` weight files, 10 JSON files,
+  one `.jinja`, and one `.txt`.
+- **Size on the GPU:** `Model loading took 7.74 GiB memory`. The BF16 weights are about
+  19.3 GB on disk, so this fits 4-bit linear layers, with parts kept at higher precision
+  (for example the embeddings).
+- **Packages inside the running container:** `vllm` 0.32.0, `vllm-bnb-plugin` 0.0.3,
+  `bitsandbytes` 0.50.2, and `torch` 2.13.0. `vllm-gguf-plugin` is not installed, and
+  `vllm_gguf_plugin` cannot be imported. The registered vLLM plugins are the two LoRA
+  resolvers and `bitsandbytes`.
+
+**Context and memory (L40S).**
+
+| | Value |
+|---|---|
+| Context chosen by `--max-model-len auto` | 262,144 tokens |
+| Model weights on the GPU | 7.74 GiB (historical GGUF: 6.44 GiB) |
+| KV cache | 27.84 GiB, 900,566 tokens (3.44 full-length requests at once) |
+| Sleep | freed 35.88 GiB (0.57 GiB left), 1.9 s |
+| Wake-up | 0.68–0.73 s |
+| While awake after a restore | GPU 37,355 / 46,068 MiB; cgroup host memory 15.5 GiB (one sample, cache not separated); engine process 13.7 GB resident |
+
+Sleep copies the weights to host memory, so each snapshot now holds about 7.7 GiB of
+weights there, against 6.4 GiB with GGUF. Peak host memory during load, sleep, and restore
+was not measured.
+
+**Feature checks through the real backend, at the original URL:**
+
+- **Long answer:** 2,765 output tokens, finishing with `stop`.
+- **Cancellation:** stopped after 3 tokens.
+- **Tool calling:** vLLM parsed `load_skill(name="worked-example")` with
+  `tool_choice="required"`. Through the backend, the model called the tool in 2 of 4
+  prompts: a full-worked-example request and an explicit "load your worked-example skill"
+  request. Both calls executed: the tool result came back, then the answer. The other two
+  answered normally without a tool. One was a hint request, which the preloaded
+  socratic-questioning skill already covers; in the other, the model answered a worked
+  solution directly. Every `/api/chat` request returned 200, and the backend logged no
+  errors.
+- **Images and PDF citations:** "Red"; the citation linked `[biology-notes.pdf, p. 1]`.
+- **Streaming:** 44 chunks.
+- **Authentication:** checked directly against the endpoint; 401 without a token or with
+  an invalid one.
+- **Route guard:** with a valid token, `/health` and `/v1/models` returned 200 and all 15
+  non-tutor routes returned 404. The internal token still reached `/is_sleeping`.
+
+**Not validated in this run:**
+
+- **L4:** Modal assigned only L40S here. The workaround run below later created an L4
+  snapshot; an L4 restore has still not been exercised.
+- **First download on the GPU path:** when `download_model` has not been run, the first
+  GPU cold start downloads the weights itself. That path was not exercised.
+
+**GPU time versus waiting.** Modal listed each container 1.5 s after the request. Estimated
+GPU-held time per container, from trial start times (about ±10 s each): 235 s, 142 s, 227 s,
+and 392 s. The last one includes all the backend checks until the app was stopped. That is
+about 17 minutes of L40S time in total; the download ran on CPU only. These are estimates,
+not Modal billing data.
+
+### Validation of the NCCL workaround (2026-11-19)
+
+The settings were the same as above plus `TORCH_NCCL_DUMP_ON_TIMEOUT=0` for the vLLM
+subprocess: the same GPU list, the 16 GiB reservation, and every other setting. The
+deploy made the old snapshots obsolete. The budget was at most 8 cold starts. Trials ran
+one at a time, and the app's full logs were searched after each one, with a plan to stop
+at the first `Transient snapshot error`, `DistStoreError`, `terminate called`, or
+`Bad file descriptor`. Results: `nccl-1..7.json` and the filtered vLLM lines in
+`nccl-vllm.log`.
+
+| Trial | Mode | GPU | TTFT |
+|---|---|---|---|
+| nccl-1 | created | L40S | 109.7 s |
+| nccl-2 | restored (from nccl-1) | L40S | 15.5 s |
+| nccl-3 | restored (from nccl-1) | L40S | 8.3 s |
+| nccl-4 | restored (from nccl-1) | L40S | 4.8 s |
+| nccl-5 | restored (from nccl-1) | L40S | 11.9 s |
+| nccl-6 | created | **L4** | 128.1 s |
+| nccl-7 | restored (from nccl-1) | L40S | 7.9 s |
+
+**Counts:** 7 cold starts, 2 snapshot creations (1 L40S, 1 L4), 5 restores (all L40S),
+**0 restore failures, 0 fallbacks**. No `Transient snapshot error`, `DistStoreError`,
+`terminate called`, `Bad file descriptor`, out-of-memory message, or traceback appeared in
+the full logs. Every restore passed the checks in
+[How restores were verified](#how-restores-were-verified). The planned 8th cold start was
+not needed, because trial 7's container was still warm for the final checks.
+
+This means no recurrence was observed in these 7 cold starts and 5 restores. It does not
+prove a restore cannot fail. The single earlier failure in 3 restores is not an
+established failure rate, and the root cause of the invalid descriptor is still
+unconfirmed.
+
+**The setting was in effect in the captured process.** Inside trial 7's restored container,
+`/proc/<pid>/environ` showed `TORCH_NCCL_DUMP_ON_TIMEOUT=0` for the vLLM API server and for
+`VLLM::EngineCore`. The API server's environment still held `MODAL_TASK_ID` of nccl-1's
+creation container, which identifies it as the process captured in the snapshot. A
+process's environment is fixed when it starts, before torch.distributed initializes and
+before capture. `TORCH_NCCL_ENABLE_MONITORING` was unset, so the hang-kill monitor stayed on.
+
+**Per GPU, from vLLM's logs:**
+
+| | L40S (nccl-1) | L4 (nccl-6) |
+|---|---|---|
+| Context (`auto`) | 262,144 tokens | 262,144 tokens |
+| Load and 4-bit quantization | 14.6 s, 7.74 GiB | 17.8 s, 7.74 GiB |
+| KV cache | 27.84 GiB, 900,566 tokens | 8.88 GiB, 287,159 tokens (1.10 full-length requests) |
+| Sleep | freed 35.88 GiB, 1.8 s | freed 16.91 GiB, 2.0 s |
+| Wake-up | 0.68–0.73 s on all restores | 0.74 s at creation |
+
+The L4 creation is the first L4 run with the Safetensors model. An L4 restore was not
+exercised, because Modal assigned L40S to every other cold start.
+
+**On trial 7's warm container:**
+
+- **Streaming through the backend:** 49 chunks, no errors.
+- **Cancellation:** stopped after 3 tokens, with nothing left running.
+- **Route guard:** `/health` and `/v1/models` returned 200 with a valid proxy token, and
+  requests without a token got 401. All 15 non-tutor routes returned 404, and the
+  internal token still reached `/is_sleeping`.
+
+**Runtime quantization state was not inspected.** The model lives in the engine's GPU
+process. From outside, vLLM only offers dev-mode `/collective_rpc`, which calls named worker
+methods with JSON arguments, and none of them reports per-layer quantization. Inspecting it
+would need a code change. The 4-bit evidence remains the logged quantization configuration
+and the plugin's code path (both above), with the 7.74 GiB weight size consistent with them.
+
+**GPU time:** estimated container lifetimes were 226, 130, 107, 125, 127, 247 (L4), and
+136 s. That is about 14 minutes on L40S and 4 minutes on L4. These are estimates, not
+Modal billing data.
+
 ## Method
 
 ### Path and clocks
@@ -623,6 +882,7 @@ with a proxy token in `LLM_API_KEY` (see [modal-serving.md](modal-serving.md)), 
 deployment virtual environment.
 
 ```powershell
+.\deployment\.venv\Scripts\python.exe -X utf8 -m modal run deployment/modal_qwen.py::download_model
 .\deployment\.venv\Scripts\python.exe -X utf8 -m modal deploy deployment/modal_qwen.py
 docker compose -f compose.yaml -f deployment/cold-start-benchmark.compose.yaml up -d --build backend
 .\deployment\.venv\Scripts\python.exe -X utf8 deployment/cold_start_benchmark.py run --label snapshot --trials 5
