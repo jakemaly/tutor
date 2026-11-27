@@ -1,7 +1,7 @@
 "use client";
 
 import { PreviewCard } from "@base-ui/react/preview-card";
-import { ChevronDownIcon, FileTextIcon } from "lucide-react";
+import { ChevronDownIcon, FileTextIcon, GlobeIcon } from "lucide-react";
 import { useState, type ComponentProps, type FC } from "react";
 import { cn } from "@/lib/utils";
 
@@ -43,7 +43,7 @@ export function Citation({
         render={<button type="button" />}
         aria-label={`Source ${index + 1}: ${source.title}`}
         className={cn(
-          "bg-foreground/[0.06] text-muted-foreground hover:text-foreground ms-0.5 inline-flex h-4 min-w-4 translate-y-[-2px] cursor-pointer items-center justify-center rounded px-1 align-middle font-mono text-[10px] tabular-nums",
+          "bg-foreground/6 text-muted-foreground hover:text-foreground ms-0.5 inline-flex h-4 min-w-4 -translate-y-0.5 cursor-pointer items-center justify-center rounded px-1 align-middle font-mono text-[10px] tabular-nums",
           className,
         )}
       >
@@ -112,5 +112,28 @@ export function Sources({
         </ul>
       )}
     </section>
+  );
+}
+
+export function WebCitationChip({
+  href,
+  className,
+  children,
+  ...props
+}: ComponentProps<"a">) {
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className={cn(
+        "bg-muted text-muted-foreground hover:bg-muted/70 hover:text-foreground mx-0.5 inline-flex max-w-56 items-center gap-1 rounded-full border px-2 py-0.5 align-middle text-xs no-underline transition-colors",
+        className,
+      )}
+      {...props}
+    >
+      <GlobeIcon className="size-3 shrink-0" aria-hidden="true" />
+      <span className="truncate">{children}</span>
+    </a>
   );
 }
