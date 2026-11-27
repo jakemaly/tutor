@@ -1,5 +1,5 @@
 import type * as React from "react";
-import { MessagesSquare } from "lucide-react";
+import tmiLogo from "@/assets/TMI.png";
 import {
   Sidebar,
   SidebarContent,
@@ -25,9 +25,13 @@ export function ThreadListSidebar({
                 size="lg"
                 render={<a href="/" aria-label="Tutor home" />}
               >
-                <div className="aui-sidebar-header-icon-wrapper bg-sidebar-primary text-sidebar-primary-foreground flex aspect-square size-8 items-center justify-center rounded-lg">
-                  <MessagesSquare className="aui-sidebar-header-icon size-4" />
-                </div>
+                <img
+                  className="aui-sidebar-header-icon size-8 shrink-0 object-contain"
+                  src={tmiLogo}
+                  alt=""
+                  width={32}
+                  height={32}
+                />
                 <div className="aui-sidebar-header-heading me-6 flex flex-col gap-0.5 leading-none">
                   <span className="aui-sidebar-header-title font-semibold">
                     Tutor
