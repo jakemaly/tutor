@@ -5,6 +5,7 @@ import asyncio
 import base64
 import json
 import logging
+import os
 import re
 from typing import Any
 from urllib.parse import quote, unquote, urlparse
@@ -25,16 +26,18 @@ from langchain_core.messages import (
 from pydantic import BaseModel, ConfigDict
 
 # Local modules separate configuration, graph behavior, and endpoint-specific model setup.
+from app.artifacts import ArtifactBackend, ArtifactStore
 from app.config import Settings
 from app.documents import UploadedSource, create_source
-from app.graph import create_graph
+from app.graph import create_graph, is_tool_call_rejection
 from app.models import create_chat_model
+from app.study_document import TOOL_NAME as STUDY_DOCUMENT_TOOL
 
 logger = logging.getLogger(__name__)
 MAX_ATTACHMENT_STORAGE_BYTES = 100 * 1024 * 1024
 CITATION_PREFIX = "[[cite:"
 CITATION_PATTERN = re.compile(r"\[\[cite:([0-9a-fA-F-]{36}):(\d+)\]\]")
-UI_ONLY_TOOLS = {"load_skill", "web_search"}
+UI_ONLY_TOOLS = {"load_skill", "web_search", STUDY_DOCUMENT_TOOL}
 WEB_PATTERN = re.compile(r"\[\[web:([0-9a-f]{8})\]\]")
 MARKER_PREFIXES = (CITATION_PREFIX, "[[web:")
 CITATION_STOP_WORDS = {
@@ -78,6 +81,14 @@ CITATION_STOP_WORDS = {
 }
 
 
+MODEL_FAILURE_MESSAGE = (
+    "The model request failed. Check LLM_BASE_URL, LLM_MODEL, LLM_API_KEY, and the backend logs."
+)
+TOOL_REJECTION_MESSAGE = (
+    "The model could not produce a valid document. Try again, or ask for something shorter."
+)
+
+
 class ChatRequest(BaseModel):
     """The text conversation sent by assistant-ui's data-stream runtime."""
 
@@ -93,7 +104,7 @@ def _message_text(message: dict[str, Any]) -> str:
     if isinstance(content, str):
         return content
     if isinstance(content, list):
-        # Skill traces are display metadata, not model history or executable client tools.
+        # Tool traces are display metadata, not model history or executable client tools.
         if message.get("role") == "assistant":
             content = [
                 part
@@ -361,6 +372,17 @@ def _text_from_chunk(chunk: AIMessageChunk) -> str:
     return ""
 
 
+def _finish_tool(name: str, tool: Any, artifact: Any, failed: bool) -> None:
+    """Send a display-only tool's final state: artifact metadata or load status, never bytes."""
+    if name == STUDY_DOCUMENT_TOOL:
+        # Artifact metadata only: id, URL, title, outline. Never file bytes.
+        usable = not failed and isinstance(artifact, dict)
+        result = artifact if usable else {"error": "The document could not be created."}
+        tool.set_response(result, is_error=not usable)
+    else:
+        tool.set_response({"loaded": not failed}, is_error=failed)
+
+
 def _render_web_markers(text: str, web_sources: dict[str, dict[str, str]]) -> str:
     """Turn [[web:ID]] into a link, but only for sources returned in this run."""
 
@@ -382,8 +404,8 @@ async def _stream_graph(
     sources: dict[str, UploadedSource],
     allowed_ids: set[str],
 ) -> None:
-    """Forward cited answer text and skill-call status, keeping skill instructions server-side."""
-    calls = {}
+    """Forward cited answer text and tool status, keeping skill text and file bytes server-side."""
+    calls: dict[str, tuple[str, Any]] = {}
     pending = ""
     cited_links: list[str] = []
     web_sources: dict[str, dict[str, str]] = {}
@@ -402,60 +424,89 @@ async def _stream_graph(
                 complete = _render_cited_segment(complete, sources, allowed_ids, cited_links)
             controller.append_text(complete)
 
-    async for mode, payload in graph.astream(
-        {"messages": messages}, stream_mode=["messages", "updates"]
-    ):
-        if controller.is_cancelled:
-            break
-        if mode == "messages":
-            chunk, _metadata = payload
-            if isinstance(chunk, AIMessageChunk):
-                text = _text_from_chunk(chunk)
-                if text:
-                    append_text(text)
-        elif mode == "updates":
-            for update in payload.values():
-                for message in update.get("messages", []):
-                    if isinstance(message, AIMessage):
-                        for call in message.tool_calls:
-                            if call["name"] in UI_ONLY_TOOLS:
-                                tool = await controller.add_tool_call(call["name"], call["id"])
-                                tool.append_args_text(json.dumps(call["args"]))
-                                calls[call["id"]] = tool
-                    elif isinstance(message, ToolMessage) and message.tool_call_id in calls:
-                        failed = message.status == "error"
-                        if message.name == "web_search":
-                            artifact = (
-                                message.artifact if isinstance(message.artifact, list) else []
-                            )
-                            for source in artifact:
-                                existing = web_sources.get(source["id"])
-                                if existing is None or existing["url"] == source["url"]:
-                                    web_sources[source["id"]] = source
-                            response = {
-                                "results": [
-                                    {"title": s["title"], "url": s["url"]} for s in artifact
-                                ],
-                                "skipped": message.artifact is None and not failed,
-                            }
-                        else:
-                            response = {"loaded": not failed}
-                        calls.pop(message.tool_call_id).set_response(response, is_error=failed)
+    try:
+        async for mode, payload in graph.astream(
+            {"messages": messages}, stream_mode=["messages", "updates"]
+        ):
+            if controller.is_cancelled:
+                break
+            if mode == "messages":
+                chunk, _metadata = payload
+                if isinstance(chunk, AIMessageChunk):
+                    text = _text_from_chunk(chunk)
+                    if text:
+                        append_text(text)
+            elif mode == "updates":
+                for update in payload.values():
+                    for message in update.get("messages", []):
+                        if isinstance(message, AIMessage):
+                            for call in message.tool_calls:
+                                if call["name"] in UI_ONLY_TOOLS:
+                                    tool = await controller.add_tool_call(call["name"], call["id"])
+                                    # The document body is large and not needed by the browser.
+                                    args = (
+                                        {"format": call["args"].get("format")}
+                                        if call["name"] == STUDY_DOCUMENT_TOOL
+                                        else call["args"]
+                                    )
+                                    tool.append_args_text(json.dumps(args))
+                                    calls[call["id"]] = (call["name"], tool)
+                        elif isinstance(message, ToolMessage) and message.tool_call_id in calls:
+                            name, tool = calls.pop(message.tool_call_id)
+                            failed = message.status == "error"
+                            if name == "web_search":
+                                artifact = (
+                                    message.artifact if isinstance(message.artifact, list) else []
+                                )
+                                for source in artifact:
+                                    existing = web_sources.get(source["id"])
+                                    if existing is None or existing["url"] == source["url"]:
+                                        web_sources[source["id"]] = source
+                                tool.set_response(
+                                    {
+                                        "results": [
+                                            {"title": s["title"], "url": s["url"]} for s in artifact
+                                        ],
+                                        "skipped": message.artifact is None and not failed,
+                                    },
+                                    is_error=failed,
+                                )
+                            else:
+                                _finish_tool(name, tool, message.artifact, failed)
+        append_text("", final=True)
+        if cited_links:
+            controller.append_text("\n\n**Sources:** " + " · ".join(dict.fromkeys(cited_links)))
+    finally:
+        # A failed or cancelled run must not leave a tool card spinning forever.
+        for name, tool in calls.values():
+            try:
+                _finish_tool(name, tool, None, failed=True)
+            except Exception:
+                logger.exception("Could not close tool call %s", name)
 
-    append_text("", final=True)
-    if cited_links:
-        controller.append_text("\n\n**Sources:** " + " · ".join(dict.fromkeys(cited_links)))
 
-
-def create_app(settings: Settings | None = None, model: BaseChatModel | None = None) -> FastAPI:
+def create_app(
+    settings: Settings | None = None,
+    model: BaseChatModel | None = None,
+    artifacts: ArtifactBackend | None = None,
+) -> FastAPI:
     """Create an app, allowing tests and other integrations to inject a chat model."""
     app_settings = settings or Settings()
+    if artifacts is None:
+        artifacts = ArtifactStore()
+        if os.environ.get("VERCEL"):
+            logger.warning(
+                "Generated documents are kept in this instance's memory, but this deployment "
+                "may run several instances, so downloads can 404. Pass a shared store to "
+                "create_app(artifacts=...); see docs/study-documents.md."
+            )
     # Tests can inject a fake model; normal startup waits until the first configured chat request.
-    graph = create_graph(model, app_settings) if model is not None else None
+    graph = create_graph(model, app_settings, artifacts) if model is not None else None
 
     app = FastAPI(title="Tutor API", version="0.1.0")
     app.state.settings = app_settings
     app.state.graph = graph
+    app.state.artifacts = artifacts
     app.state.sources = {}
 
     @app.get("/api/health")
@@ -465,6 +516,24 @@ def create_app(settings: Settings | None = None, model: BaseChatModel | None = N
             "status": "ok",
             "model_configured": app_settings.model_configured or model is not None,
         }
+
+    @app.get("/api/artifacts/{artifact_id}")
+    async def artifact(artifact_id: str, inline: bool = False) -> Response:
+        """Serve a generated file by its unguessable id until it expires."""
+        found = artifacts.get(artifact_id)
+        if found is None:
+            raise HTTPException(status_code=404, detail="This file has expired. Ask for it again.")
+        # Only PDFs are safe to display in the page; Word files always download.
+        disposition = "inline" if inline and found.media_type == "application/pdf" else "attachment"
+        return Response(
+            found.data,
+            media_type=found.media_type,
+            headers={
+                "Content-Disposition": f'{disposition}; filename="{found.filename}"',
+                "Cache-Control": "private, no-store",
+                "X-Content-Type-Options": "nosniff",
+            },
+        )
 
     @app.put("/api/attachments/{source_id}")
     async def upload_attachment(source_id: str, request: Request) -> dict[str, Any]:
@@ -545,7 +614,7 @@ def create_app(settings: Settings | None = None, model: BaseChatModel | None = N
                     detail="Configure LLM_BASE_URL and LLM_MODEL in .env, then restart the app.",
                 )
             # Build lazily so health/UI still work without credentials, then reuse the graph.
-            selected_graph = create_graph(create_chat_model(app_settings), app_settings)
+            selected_graph = create_graph(create_chat_model(app_settings), app_settings, artifacts)
             app.state.graph = selected_graph
 
         input_messages = _messages_for_graph(request.messages, app.state.sources)
@@ -568,12 +637,13 @@ def create_app(settings: Settings | None = None, model: BaseChatModel | None = N
             except asyncio.CancelledError:
                 # Cancellation is control flow, not a model error to display to the user.
                 raise
-            except Exception:
+            except Exception as error:
                 # Keep provider details in server logs; the browser receives an actionable message.
                 logger.exception("Chat model request failed")
                 controller.add_error(
-                    "The model request failed. Check LLM_BASE_URL, LLM_MODEL, "
-                    "LLM_API_KEY, and the backend logs."
+                    TOOL_REJECTION_MESSAGE
+                    if is_tool_call_rejection(error)
+                    else MODEL_FAILURE_MESSAGE
                 )
 
         return DataStreamResponse(create_run(run))
