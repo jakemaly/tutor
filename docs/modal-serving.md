@@ -26,7 +26,7 @@ python -m venv deployment/.venv
 
 
 
-Set a $30 workspace usage limit in Modal before deploying. Then run:
+Set a $30 workspace usage limit in Modal before deploying. Then deploy the server (it restores from a GPU memory snapshot, see [Cold starts](#cold-starts)):
 
 
 
@@ -42,7 +42,19 @@ Set a $30 workspace usage limit in Modal before deploying. Then run:
 
 
 
-Create a proxy token in the Modal dashboard. Use the endpoint URL printed by the deploy command and set these values in your local `.env`:
+Create a proxy token in the Modal dashboard. The endpoint URL is `https://<workspace>--socratic-tutor-qwen-serve.<region>.modal.run`, the same as before the snapshot server replaced the plain function, so an existing `LLM_BASE_URL` keeps working. To print it:
+
+
+
+```powershell
+
+.\deployment\.venv\Scripts\python.exe -c "import modal; print(modal.Cls.from_name('socratic-tutor-qwen', 'SnapshotServer')().serve.get_web_url())"
+
+```
+
+
+
+Set these values in your local `.env`:
 
 
 
@@ -58,7 +70,7 @@ LLM_API_KEY=YOUR_PROXY_TOKEN_ID.YOUR_PROXY_TOKEN_SECRET
 
 
 
-Start Docker Desktop, then run `docker compose up -d --build`. Open http://localhost:5173 and send a question. The first request can take several minutes while Modal assigns a GPU and loads the model. Send a follow-up while the GPU is warm to check that the answer appears in chunks.
+Start Docker Desktop, then run `docker compose up -d --build`. Open http://localhost:5173 and send a question. After the GPU scales to zero, the first request usually answers in about 6–20 seconds on an L40S, or about 30 seconds on an L4. After a deploy that changes the code or configuration, the first few cold starts take about 3 minutes on an L40S, or up to about 6.5 minutes on an L4, while vLLM loads the model and Modal creates new snapshots. Any cold start can wait longer when Modal has no free GPU. Send a follow-up while the GPU is warm to check that the answer appears in chunks.
 
 
 
@@ -85,6 +97,64 @@ When finished testing, run:
 
 
 Run `docker compose stop` to stop the local tutor.
+
+
+
+## Cold starts
+
+
+
+Weights and tokenizer files load from the `socratic-tutor-model-cache` Volume; nothing is downloaded on a cold start. vLLM's compiled Triton kernels are kept on the same Volume in `/triton-cache`, so only the first cold start after a vLLM or Triton change compiles them (about 60 s extra). The vLLM server is started with `--enable-auto-tool-choice --tool-call-parser qwen3_xml` because the tutor sends a `load_skill` tool with every request.
+
+
+
+The server starts vLLM, warms it up, and puts it to sleep before Modal saves a GPU memory snapshot of the container. Later cold starts restore that snapshot and only copy the weights back to the GPU. Redeploying with new code or configuration makes the previous snapshots obsolete, and Modal may create several compatible snapshots per GPU type (L4 and L40S). The first few cold starts after such a deploy therefore take the full startup path plus about 8 s to create a snapshot. In our tests every redeploy changed the code and was followed by new snapshots; redeploying unchanged code was not tested. GPU memory snapshots are an alpha Modal feature. vLLM's sleep and wake routes need `VLLM_SERVER_DEV_MODE=1`, which also adds vLLM's other administrative routes. A route guard ([deployment/vllm_route_guard.py](../deployment/vllm_route_guard.py)) runs inside vLLM, so proxy-token holders can reach only `POST /v1/chat/completions`, `GET /v1/models`, and `GET /health`. Every other route, including `/metrics`, `/sleep`, and `/wake_up`, answers 404 unless the request carries a token that the container generates at startup and uses only for its own sleep and wake calls.
+
+
+
+### Prepare snapshots after deploying
+
+
+
+New snapshots after a deploy with new code or configuration are expected. The first request after such a deploy runs the full startup and creates a snapshot: about 3 minutes on an L40S, longer on an L4. To get this done before people start testing, send one authenticated request right after deploying. Use your `LLM_API_KEY` value and the endpoint URL from `LLM_BASE_URL`:
+
+
+
+```powershell
+
+$key = "YOUR_PROXY_TOKEN_ID.YOUR_PROXY_TOKEN_SECRET"
+
+curl.exe -sS -L --max-time 900 -H "Authorization: Bearer $key" https://YOUR-MODAL-ENDPOINT/v1/models
+
+```
+
+
+
+It returns the model list (`socratic-tutor`) once the server is ready. Modal redirects requests that wait longer than 150 seconds, and `-L` follows the redirect. Sending one message in the tutor has the same effect.
+
+
+
+To confirm that the snapshot was created, check the app logs:
+
+
+
+```powershell
+
+.\deployment\.venv\Scripts\python.exe -m modal app logs socratic-tutor-qwen --since 15m --tail 2000 | Select-String -SimpleMatch 'Creating GPU memory snapshot', '"event": "sleeping"', '"event": "awake"'
+
+```
+
+
+
+`Creating GPU memory snapshot for Function.` followed by the `sleeping` and `awake` events means the snapshot was saved and the server woke up. After the container scales down (60 seconds idle), later cold starts on the same kind of worker log `Restoring Function from memory snapshot.` instead.
+
+
+
+This prepares only the worker that served the request: one GPU type (L40S or L4) from one cloud provider. Modal keeps separate snapshots per GPU type and may create more for other workers, so a later cold start on a different worker can still take the full startup. The request costs one full startup of GPU time plus the 60-second idle window. `min_containers` stays at 0 and the scale-down window is unchanged, so the container then shuts down as usual.
+
+
+
+Each container logs `[cold-start]` timing events. See [Modal cold-start benchmark](cold-start-benchmark.md) for the stage breakdown, the measured results, and how to repeat the measurement. The snapshot-restored server was checked through the tutor backend for streaming, PDF citations, image input, cancellation, tool-call parsing, and proxy authentication.
 
 
 

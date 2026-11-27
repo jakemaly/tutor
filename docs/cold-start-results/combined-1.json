@@ -1,0 +1,449 @@
+{
+  "label": "combined",
+  "trial": 1,
+  "prompt": "What does the derivative of a function tell us? Answer in two sentences.",
+  "started_utc": "2026-11-19T00:22:47.730407+00:00",
+  "t0_wall": 1795047767.7304208,
+  "clock": {
+    "local_minus_ntp": 0.0323,
+    "round_trip": 0.0354
+  },
+  "seconds_waited_for_scale_down": 1.8,
+  "containers_before": 0,
+  "containers_seen": [
+    {
+      "container_id": "ta-01M7RJYJAYFHQSJV10C9MXP2ER",
+      "app_id": "ap-vkx6YyjA6EcteM7ALAZcXX",
+      "app_name": "socratic-tutor-qwen",
+      "start_time": "Pending",
+      "seen": 7.53
+    }
+  ],
+  "task_ids": [
+    "ta-01M7RJYJAYFHQSJV10C9MXP2ER"
+  ],
+  "new_task_id": true,
+  "client": {
+    "first": {
+      "text": 181.4334,
+      "empty_text": 184.0716
+    },
+    "answer_chars": 230,
+    "errors": [],
+    "headers": 0.2589,
+    "status": 200,
+    "end": 184.0716
+  },
+  "relay": [
+    {
+      "method": "POST",
+      "path": "/v1/chat/completions",
+      "received": 0.2887,
+      "first": {},
+      "forwarded": 2.4447,
+      "headers": 152.4951,
+      "status": 303,
+      "end": 152.4954
+    },
+    {
+      "method": "GET",
+      "path": "/v1/chat/completions",
+      "received": 152.4996,
+      "first": {
+        "role": 181.4081,
+        "content": 181.4252,
+        "finish": 184.0472,
+        "done": 184.0652
+      },
+      "forwarded": 152.6232,
+      "headers": 180.7915,
+      "status": 200,
+      "first_byte": 181.4081,
+      "end": 184.0656
+    }
+  ],
+  "container_events": [
+    {
+      "boot_wall": 1795047772.518,
+      "event": "serve_entered",
+      "modal_cloud_provider": "CLOUD_PROVIDER_AWS",
+      "modal_image_id": "im-R4bcBoIDZM5UpqKybmE17n",
+      "modal_region": "us-east",
+      "modal_task_id": "ta-01M7RJYJAYFHQSJV10C9MXP2ER",
+      "mono": 0.9904,
+      "phase": "snapshot",
+      "process_start_wall": 1795047772.558,
+      "rx_bytes": 168,
+      "wall": 1795047773.5079,
+      "log_task_id": "ta-01M7RJYJAYFHQSJV10C9MXP2ER"
+    },
+    {
+      "config_dir": {
+        "bytes": 22995959,
+        "exists": true,
+        "files": 30
+      },
+      "event": "cache_state",
+      "flashinfer_cache": {
+        "bytes": 0,
+        "exists": false,
+        "files": 0
+      },
+      "gguf": {
+        "bytes": 5680522400,
+        "exists": true
+      },
+      "mmproj": {
+        "bytes": 921705024,
+        "exists": true
+      },
+      "modal_cloud_provider": "CLOUD_PROVIDER_AWS",
+      "modal_image_id": "im-R4bcBoIDZM5UpqKybmE17n",
+      "modal_region": "us-east",
+      "modal_task_id": "ta-01M7RJYJAYFHQSJV10C9MXP2ER",
+      "mono": 1.4841,
+      "tokenizer_snapshot": {
+        "bytes": 23082781,
+        "exists": true,
+        "files": 12
+      },
+      "triton_cache": {
+        "bytes": 55858909,
+        "exists": true,
+        "files": 1111
+      },
+      "vllm_cache": {
+        "bytes": 0,
+        "exists": false,
+        "files": 0
+      },
+      "wall": 1795047774.0016,
+      "log_task_id": "ta-01M7RJYJAYFHQSJV10C9MXP2ER"
+    },
+    {
+      "event": "tokenizer_config_ready",
+      "modal_cloud_provider": "CLOUD_PROVIDER_AWS",
+      "modal_image_id": "im-R4bcBoIDZM5UpqKybmE17n",
+      "modal_region": "us-east",
+      "modal_task_id": "ta-01M7RJYJAYFHQSJV10C9MXP2ER",
+      "mono": 1.7477,
+      "wall": 1795047774.2652,
+      "log_task_id": "ta-01M7RJYJAYFHQSJV10C9MXP2ER"
+    },
+    {
+      "event": "vllm_spawned",
+      "modal_cloud_provider": "CLOUD_PROVIDER_AWS",
+      "modal_image_id": "im-R4bcBoIDZM5UpqKybmE17n",
+      "modal_region": "us-east",
+      "modal_task_id": "ta-01M7RJYJAYFHQSJV10C9MXP2ER",
+      "mono": 1.7508,
+      "spawned_mono": 1.7508,
+      "wall": 1795047774.2683,
+      "log_task_id": "ta-01M7RJYJAYFHQSJV10C9MXP2ER"
+    },
+    {
+      "event": "gpu",
+      "gpu": "NVIDIA L40S, 46068 MiB",
+      "modal_cloud_provider": "CLOUD_PROVIDER_AWS",
+      "modal_image_id": "im-R4bcBoIDZM5UpqKybmE17n",
+      "modal_region": "us-east",
+      "modal_task_id": "ta-01M7RJYJAYFHQSJV10C9MXP2ER",
+      "mono": 1.7811,
+      "wall": 1795047774.2986,
+      "log_task_id": "ta-01M7RJYJAYFHQSJV10C9MXP2ER"
+    },
+    {
+      "boot_wall": 1795047772.515,
+      "event": "vllm_ready",
+      "modal_cloud_provider": "CLOUD_PROVIDER_AWS",
+      "modal_image_id": "im-R4bcBoIDZM5UpqKybmE17n",
+      "modal_region": "us-east",
+      "modal_task_id": "ta-01M7RJYJAYFHQSJV10C9MXP2ER",
+      "mono": 166.8281,
+      "process_start_wall": 1795047772.555,
+      "rx_bytes": 27446,
+      "wall": 1795047939.3455,
+      "log_task_id": "ta-01M7RJYJAYFHQSJV10C9MXP2ER"
+    },
+    {
+      "event": "warmup_done",
+      "modal_cloud_provider": "CLOUD_PROVIDER_AWS",
+      "modal_image_id": "im-R4bcBoIDZM5UpqKybmE17n",
+      "modal_region": "us-east",
+      "modal_task_id": "ta-01M7RJYJAYFHQSJV10C9MXP2ER",
+      "mono": 169.1362,
+      "requests": 2.0,
+      "wall": 1795047941.6536,
+      "log_task_id": "ta-01M7RJYJAYFHQSJV10C9MXP2ER"
+    },
+    {
+      "boot_wall": 1795047772.519,
+      "event": "sleeping",
+      "modal_cloud_provider": "CLOUD_PROVIDER_AWS",
+      "modal_image_id": "im-R4bcBoIDZM5UpqKybmE17n",
+      "modal_region": "us-east",
+      "modal_task_id": "ta-01M7RJYJAYFHQSJV10C9MXP2ER",
+      "mono": 170.9412,
+      "process_start_wall": 1795047772.559,
+      "rx_bytes": 27446,
+      "snapshot_id": "5a1aa15b658c",
+      "wall": 1795047943.4587,
+      "log_task_id": "ta-01M7RJYJAYFHQSJV10C9MXP2ER"
+    },
+    {
+      "boot_wall": 1795047772.517,
+      "event": "restored",
+      "modal_cloud_provider": "CLOUD_PROVIDER_AWS",
+      "modal_image_id": "im-R4bcBoIDZM5UpqKybmE17n",
+      "modal_region": "us-east",
+      "modal_task_id": "ta-01M7RJYJAYFHQSJV10C9MXP2ER",
+      "mono": 175.1,
+      "process_start_wall": 1795047772.557,
+      "rx_bytes": 27446,
+      "snapshot_id": "5a1aa15b658c",
+      "snapshot_task_id": "ta-01M7RJYJAYFHQSJV10C9MXP2ER",
+      "wall": 1795047947.6175,
+      "log_task_id": "ta-01M7RJYJAYFHQSJV10C9MXP2ER"
+    },
+    {
+      "boot_wall": 1795047772.518,
+      "event": "awake",
+      "modal_cloud_provider": "CLOUD_PROVIDER_AWS",
+      "modal_image_id": "im-R4bcBoIDZM5UpqKybmE17n",
+      "modal_region": "us-east",
+      "modal_task_id": "ta-01M7RJYJAYFHQSJV10C9MXP2ER",
+      "mono": 175.761,
+      "process_start_wall": 1795047772.558,
+      "rx_bytes": 27446,
+      "wall": 1795047948.2785,
+      "log_task_id": "ta-01M7RJYJAYFHQSJV10C9MXP2ER"
+    },
+    {
+      "event": "gpu",
+      "gpu": "NVIDIA L40S, 46068 MiB",
+      "modal_cloud_provider": "CLOUD_PROVIDER_AWS",
+      "modal_image_id": "im-R4bcBoIDZM5UpqKybmE17n",
+      "modal_region": "us-east",
+      "modal_task_id": "ta-01M7RJYJAYFHQSJV10C9MXP2ER",
+      "mono": 175.792,
+      "wall": 1795047948.3095,
+      "log_task_id": "ta-01M7RJYJAYFHQSJV10C9MXP2ER"
+    },
+    {
+      "boot_wall": 1795047772.519,
+      "cache_state": {
+        "config_dir": {
+          "bytes": 22995959,
+          "exists": true,
+          "files": 30
+        },
+        "flashinfer_cache": {
+          "bytes": 0,
+          "exists": true,
+          "files": 1
+        },
+        "gguf": {
+          "bytes": 5680522400,
+          "exists": true
+        },
+        "mmproj": {
+          "bytes": 921705024,
+          "exists": true
+        },
+        "tokenizer_snapshot": {
+          "bytes": 23082781,
+          "exists": true,
+          "files": 12
+        },
+        "triton_cache": {
+          "bytes": 55858909,
+          "exists": true,
+          "files": 1111
+        },
+        "vllm_cache": {
+          "bytes": 944,
+          "exists": true,
+          "files": 1
+        }
+      },
+      "event": "first_token_observed",
+      "modal_cloud_provider": "CLOUD_PROVIDER_AWS",
+      "modal_image_id": "im-R4bcBoIDZM5UpqKybmE17n",
+      "modal_region": "us-east",
+      "modal_task_id": "ta-01M7RJYJAYFHQSJV10C9MXP2ER",
+      "mono": 177.1416,
+      "poll_interval": 0.1,
+      "prefill_seconds": -0.0,
+      "process_start_wall": 1795047772.559,
+      "prompt_tokens": 617.0,
+      "queue_seconds": 0.0,
+      "requests": 1.0,
+      "rx_bytes": 27446,
+      "ttft_seconds": 0.625414,
+      "wall": 1795047949.6591,
+      "log_task_id": "ta-01M7RJYJAYFHQSJV10C9MXP2ER"
+    }
+  ],
+  "vllm_milestones": {
+    "cli_imported": {
+      "offset": 24.178,
+      "reported_seconds": null
+    },
+    "model_loaded": {
+      "offset": 148.138,
+      "reported_seconds": 81.723814
+    },
+    "engine_initialized": {
+      "offset": 163.009,
+      "reported_seconds": 14.7
+    },
+    "api_started": {
+      "offset": 165.068,
+      "reported_seconds": null
+    }
+  },
+  "snapshot_log": [
+    "ta-01M7RJYJAYFHQSJV10C9MXP2ER Creating GPU memory snapshot for Function."
+  ],
+  "summary": {
+    "label": "combined",
+    "trial": 1,
+    "task_id": "ta-01M7RJYJAYFHQSJV10C9MXP2ER",
+    "gpu": "NVIDIA L40S, 46068 MiB",
+    "ttft_seconds": 181.4334,
+    "snapshot": {
+      "mode": "created",
+      "snapshot_id": "5a1aa15b658c",
+      "snapshot_task_id": "ta-01M7RJYJAYFHQSJV10C9MXP2ER",
+      "restored_task_id": "ta-01M7RJYJAYFHQSJV10C9MXP2ER",
+      "restored_from_other_container": false,
+      "modal_log": [
+        "ta-01M7RJYJAYFHQSJV10C9MXP2ER Creating GPU memory snapshot for Function."
+      ]
+    },
+    "cold": {
+      "no_containers_before_request": true,
+      "new_task_id": true,
+      "process_started_after_request": true
+    },
+    "cache": {
+      "gguf_cached": true,
+      "mmproj_cached": true,
+      "tokenizer_cached": true,
+      "kernel_cache_files_before": 1111,
+      "network_mb_until_ready": 0.0
+    },
+    "engine": {
+      "ttft_seconds": 0.625414,
+      "queue_seconds": 0.0,
+      "prefill_seconds": -0.0,
+      "prompt_tokens": 617.0
+    },
+    "tool_call_before_answer": false,
+    "errors": [],
+    "stages": [
+      {
+        "key": "local_backend",
+        "label": "Local backend until upstream request",
+        "seconds": 0.289,
+        "basis": "same-clock"
+      },
+      {
+        "key": "provisioning",
+        "label": "Modal routing, GPU scheduling, container creation",
+        "seconds": 4.571,
+        "basis": "cross-host"
+      },
+      {
+        "key": "runtime_init",
+        "label": "Container runtime and function import",
+        "seconds": 0.95,
+        "basis": "container"
+      },
+      {
+        "key": "cache_scan",
+        "label": "Cache-state check (instrumentation)",
+        "seconds": 0.494,
+        "basis": "container"
+      },
+      {
+        "key": "tokenizer_sync",
+        "label": "Tokenizer/config sync (Volume + HF metadata)",
+        "seconds": 0.264,
+        "basis": "container"
+      },
+      {
+        "key": "vllm_import",
+        "label": "vLLM CLI imports (torch, vLLM)",
+        "seconds": 24.181,
+        "basis": "container"
+      },
+      {
+        "key": "engine_spawn",
+        "label": "Config resolution, engine spawn, CUDA init",
+        "seconds": 42.236,
+        "basis": "container"
+      },
+      {
+        "key": "model_load",
+        "label": "Model load (GGUF from Volume to GPU)",
+        "seconds": 81.724,
+        "basis": "container"
+      },
+      {
+        "key": "engine_init",
+        "label": "Profiling, KV cache, warmup, kernel JIT",
+        "seconds": 14.871,
+        "basis": "container"
+      },
+      {
+        "key": "api_startup",
+        "label": "API server startup until /health",
+        "seconds": 2.068,
+        "basis": "container"
+      },
+      {
+        "key": "warmup",
+        "label": "Warmup requests before the snapshot",
+        "seconds": 2.308,
+        "basis": "container"
+      },
+      {
+        "key": "sleep",
+        "label": "Prefix-cache reset and vLLM sleep (level 1)",
+        "seconds": 1.805,
+        "basis": "container"
+      },
+      {
+        "key": "snapshot",
+        "label": "Modal snapshot capture, then restore in place",
+        "seconds": 4.159,
+        "basis": "container"
+      },
+      {
+        "key": "wake_up",
+        "label": "vLLM wake_up: weights to GPU, KV cache",
+        "seconds": 0.661,
+        "basis": "container"
+      },
+      {
+        "key": "first_token",
+        "label": "Held request until first token in engine",
+        "seconds": 1.381,
+        "basis": "container"
+      },
+      {
+        "key": "return_path",
+        "label": "First token back to relay",
+        "seconds": -0.536,
+        "basis": "cross-host"
+      },
+      {
+        "key": "backend_stream",
+        "label": "Relay through backend to client text",
+        "seconds": 0.008,
+        "basis": "same-clock"
+      }
+    ]
+  }
+}

@@ -1,0 +1,229 @@
+{
+  "label": "snapshot-guard",
+  "trial": 5,
+  "prompt": "What does the derivative of a function tell us? Answer in two sentences.",
+  "started_utc": "2026-11-18T22:43:04.677857+00:00",
+  "t0_wall": 1795041784.6778636,
+  "clock": {
+    "local_minus_ntp": 0.0094,
+    "round_trip": 0.034
+  },
+  "seconds_waited_for_scale_down": 70.0,
+  "containers_before": 0,
+  "containers_seen": [
+    {
+      "container_id": "ta-01M7RD7XCQJP52KVFPNE46YGFR",
+      "app_id": "ap-xETsRx2Iisk7GjeNVcNstt",
+      "app_name": "socratic-tutor-qwen-snapshot",
+      "start_time": "Pending",
+      "seen": 2.1
+    }
+  ],
+  "task_ids": [
+    "ta-01M7RD7XCQJP52KVFPNE46YGFR"
+  ],
+  "new_task_id": true,
+  "client": {
+    "first": {
+      "text": 27.6961,
+      "empty_text": 31.0169
+    },
+    "answer_chars": 230,
+    "errors": [],
+    "headers": 0.0192,
+    "status": 200,
+    "end": 31.0169
+  },
+  "relay": [
+    {
+      "method": "POST",
+      "path": "/v1/chat/completions",
+      "received": 0.0342,
+      "first": {
+        "role": 27.6024,
+        "content": 27.6923,
+        "finish": 31.0106,
+        "done": 31.0106
+      },
+      "forwarded": 0.2686,
+      "headers": 24.8144,
+      "status": 200,
+      "first_byte": 27.6024,
+      "end": 31.011
+    }
+  ],
+  "container_events": [
+    {
+      "boot_wall": 1795041372.282,
+      "event": "restored",
+      "modal_cloud_provider": "CLOUD_PROVIDER_GCP",
+      "modal_image_id": "im-R4bcBoIDZM5UpqKybmE17n",
+      "modal_region": "eu-west",
+      "modal_task_id": "ta-01M7RD7XCQJP52KVFPNE46YGFR",
+      "mono": 306.2766,
+      "process_start_wall": 1795041372.352,
+      "rx_bytes": 552,
+      "snapshot_id": "81961692e4d4",
+      "snapshot_task_id": "ta-01M7RCV7SH4G0SYGBHVECE1KJR",
+      "wall": 1795041807.7635,
+      "log_task_id": "ta-01M7RD7XCQJP52KVFPNE46YGFR"
+    },
+    {
+      "boot_wall": 1795041372.279,
+      "event": "awake",
+      "modal_cloud_provider": "CLOUD_PROVIDER_GCP",
+      "modal_image_id": "im-R4bcBoIDZM5UpqKybmE17n",
+      "modal_region": "eu-west",
+      "modal_task_id": "ta-01M7RD7XCQJP52KVFPNE46YGFR",
+      "mono": 307.5026,
+      "process_start_wall": 1795041372.349,
+      "rx_bytes": 552,
+      "wall": 1795041808.9894,
+      "log_task_id": "ta-01M7RD7XCQJP52KVFPNE46YGFR"
+    },
+    {
+      "event": "gpu",
+      "gpu": "NVIDIA L4, 23034 MiB",
+      "modal_cloud_provider": "CLOUD_PROVIDER_GCP",
+      "modal_image_id": "im-R4bcBoIDZM5UpqKybmE17n",
+      "modal_region": "eu-west",
+      "modal_task_id": "ta-01M7RD7XCQJP52KVFPNE46YGFR",
+      "mono": 307.5547,
+      "wall": 1795041809.0415,
+      "log_task_id": "ta-01M7RD7XCQJP52KVFPNE46YGFR"
+    },
+    {
+      "boot_wall": 1795041372.281,
+      "cache_state": {
+        "config_dir": {
+          "bytes": 22995959,
+          "exists": true,
+          "files": 30
+        },
+        "flashinfer_cache": {
+          "bytes": 0,
+          "exists": true,
+          "files": 1
+        },
+        "gguf": {
+          "bytes": 5680522400,
+          "exists": true
+        },
+        "mmproj": {
+          "bytes": 921705024,
+          "exists": true
+        },
+        "tokenizer_snapshot": {
+          "bytes": 23082781,
+          "exists": true,
+          "files": 12
+        },
+        "triton_cache": {
+          "bytes": 55858909,
+          "exists": true,
+          "files": 1111
+        },
+        "vllm_cache": {
+          "bytes": 944,
+          "exists": true,
+          "files": 1
+        }
+      },
+      "event": "first_token_observed",
+      "modal_cloud_provider": "CLOUD_PROVIDER_GCP",
+      "modal_image_id": "im-R4bcBoIDZM5UpqKybmE17n",
+      "modal_region": "eu-west",
+      "modal_task_id": "ta-01M7RD7XCQJP52KVFPNE46YGFR",
+      "mono": 311.1849,
+      "poll_interval": 0.1,
+      "prefill_seconds": 0.0,
+      "process_start_wall": 1795041372.351,
+      "prompt_tokens": 617.0,
+      "queue_seconds": 0.0,
+      "requests": 1.0,
+      "rx_bytes": 552,
+      "ttft_seconds": 2.804993,
+      "wall": 1795041812.6718,
+      "log_task_id": "ta-01M7RD7XCQJP52KVFPNE46YGFR"
+    }
+  ],
+  "vllm_milestones": {},
+  "snapshot_log": [
+    "ta-01M7RD7XCQJP52KVFPNE46YGFR Restoring Function from memory snapshot."
+  ],
+  "summary": {
+    "label": "snapshot-guard",
+    "trial": 5,
+    "task_id": "ta-01M7RD7XCQJP52KVFPNE46YGFR",
+    "gpu": "NVIDIA L4, 23034 MiB",
+    "ttft_seconds": 27.6961,
+    "snapshot": {
+      "mode": "restored",
+      "snapshot_id": "81961692e4d4",
+      "snapshot_task_id": "ta-01M7RCV7SH4G0SYGBHVECE1KJR",
+      "restored_task_id": "ta-01M7RD7XCQJP52KVFPNE46YGFR",
+      "restored_from_other_container": true,
+      "modal_log": [
+        "ta-01M7RD7XCQJP52KVFPNE46YGFR Restoring Function from memory snapshot."
+      ]
+    },
+    "cold": {
+      "no_containers_before_request": true,
+      "new_task_id": true,
+      "restore_began_after_request": true
+    },
+    "cache": {
+      "gguf_cached": null,
+      "mmproj_cached": null,
+      "tokenizer_cached": null,
+      "kernel_cache_files_before": 0,
+      "network_mb_until_ready": 0.0
+    },
+    "engine": {
+      "ttft_seconds": 2.804993,
+      "queue_seconds": 0.0,
+      "prefill_seconds": 0.0,
+      "prompt_tokens": 617.0
+    },
+    "tool_call_before_answer": false,
+    "errors": [],
+    "stages": [
+      {
+        "key": "local_backend",
+        "label": "Local backend until upstream request",
+        "seconds": 0.034,
+        "basis": "same-clock"
+      },
+      {
+        "key": "provisioning_restore",
+        "label": "Modal routing, GPU scheduling, snapshot restore",
+        "seconds": 23.061,
+        "basis": "cross-host"
+      },
+      {
+        "key": "wake_up",
+        "label": "vLLM wake_up: weights to GPU, KV cache",
+        "seconds": 1.226,
+        "basis": "container"
+      },
+      {
+        "key": "first_token",
+        "label": "Held request until first token in engine",
+        "seconds": 3.682,
+        "basis": "container"
+      },
+      {
+        "key": "return_path",
+        "label": "First token back to relay",
+        "seconds": -0.311,
+        "basis": "cross-host"
+      },
+      {
+        "key": "backend_stream",
+        "label": "Relay through backend to client text",
+        "seconds": 0.004,
+        "basis": "same-clock"
+      }
+    ]
+  }
+}
