@@ -26,6 +26,8 @@ services:
     env_file:
       - path: .env
         required: false
+    environment:
+      SEARXNG_URL: http://searxng:8080
     volumes:
       - ./backend:/workspace/backend
     healthcheck:
@@ -38,3 +40,19 @@ services:
       timeout: 3s
       retries: 10
       start_period: 5s
+    depends_on:
+      - searxng
+    networks: [private, default]
+
+
+  searxng:
+    image: searxng/searxng:latest
+    volumes:
+      - ./searxng/settings.yml:/etc/searxng/settings.yml:ro
+    environment:
+      SEARXNG_SECRET: ${SEARXNG_SECRET}   
+    networks: [private]
+  
+networks:
+  private: {}
+

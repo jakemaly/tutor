@@ -1,0 +1,7 @@
+# Routes the backend's model calls through the cold-start benchmark relay on the host.
+# The model name and API key still come from .env. Use with:
+#   docker compose -f compose.yaml -f deployment/cold-start-benchmark.compose.yaml up -d backend
+services:
+  backend:
+    environment:
+      LLM_BASE_URL: http://host.docker.internal:8787/v1
