@@ -1,1 +1,90 @@
-"""Placeholder for evaluating future training runs and model artifacts."""
+"""Compare the trained checkpoint with the base tutor on the same fixed scenarios (week 2).
+
+Usage:
+    python training/evaluate.py --config training/configs/molab.toml \
+        --policy base=hf:base --policy trained=hf:outputs/tutor-rl-qwen35-9b-bigmath/final/adapter
+
+    # week 2: both served by deployment/modal_qwen_trained.py (see docs/modal-serving.md)
+    python training/evaluate.py --config training/configs/molab.toml --run-dir <dir> \
+        --policy base=TUTOR_BASE --policy trained=TUTOR_TRAINED
+
+`hf:base` / `hf:<adapter dir>` load the tutor locally (one base model, adapter switched on or
+off). `<ENV_PREFIX>` is a served tutor: it reads <PREFIX>_BASE_URL / _MODEL / _API_KEY, so the
+app's default provider (LLM_BASE_URL in .env) is never changed. Reports, per policy, how often
+the tutor leaked the answer and how often the student solved the problem afterwards, on the same
+problems, seeds, student and judge. Writes results.json, results.md and per-policy episodes
+under <run_dir>/eval/.
+"""
+
+import argparse
+import os
+from pathlib import Path
+
+from tutor_rl.config import load_config
+from tutor_rl.data import prepare_data, read_problems
+from tutor_rl.evaluation import evaluate
+from tutor_rl.openai_chat import model_from_section, served_tutor
+
+
+def build_policies(cfg, specs: list[str]):
+    """Parse NAME=hf:base | NAME=hf:<adapter> | NAME=<ENV_PREFIX>."""
+    policies, hf_adapters, hf_policy = {}, {}, None
+    for spec in specs:
+        name, _, target = spec.partition("=")
+        if target.startswith("hf:"):
+            hf_adapters[name] = target[3:]
+        else:
+            url, model = os.environ.get(f"{target}_BASE_URL"), os.environ.get(f"{target}_MODEL")
+            if not (url and model):
+                raise SystemExit(f"Set {target}_BASE_URL and {target}_MODEL (and {target}_API_KEY)")
+            api_key = os.environ.get(f"{target}_API_KEY", "EMPTY")
+            policies[name] = served_tutor(cfg.tutor, url, model, api_key)
+    adapters = {n: a for n, a in hf_adapters.items() if a != "base"}
+    if len(set(adapters.values())) > 1:
+        raise SystemExit("Compare at most one local adapter per run (plus hf:base).")
+    if hf_adapters:
+        from tutor_rl.gpu_budget import cap_tutor, plan
+        from tutor_rl.policy import load_tutor
+
+        cap_tutor(plan(cfg))  # everything together stays under [gpu] max_fraction
+        adapter = next(iter(adapters.values()), None)
+        hf_policy = load_tutor(cfg.tutor, adapter_path=adapter, trainable=False)
+        policies.update({n: hf_policy for n in hf_adapters})
+
+    def switch(name, policy):
+        if policy is hf_policy:
+            policy.use_adapter = hf_adapters[name] != "base"
+
+    return policies, switch
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--config", required=True)
+    parser.add_argument("--policy", action="append", default=[], metavar="NAME=TARGET")
+    parser.add_argument("--run-dir", help="defaults to [train].output_dir")
+    args = parser.parse_args()
+    cfg = load_config(args.config)
+    run_dir = Path(args.run_dir or cfg.output_dir)
+    if not args.policy:
+        parser.error("give at least one --policy")
+    if not (run_dir / "data" / "eval.jsonl").exists():
+        prepare_data(cfg, run_dir / "data")
+
+    policies, switch = build_policies(cfg, args.policy)
+    report = evaluate(
+        cfg,
+        policies,
+        read_problems(run_dir / "data" / "eval.jsonl"),
+        model_from_section(cfg.student),
+        model_from_section(cfg.judge),
+        run_dir / "eval",
+        before_each=switch,
+        final_student=model_from_section(cfg.student, max_tokens_key="max_tokens_final"),
+    )
+    print((run_dir / "eval" / "results.md").read_text())
+    return report
+
+
+if __name__ == "__main__":
+    main()
