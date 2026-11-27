@@ -6,6 +6,7 @@ import {
 } from "@/components/day-separator";
 import { Button } from "@/components/ui/button";
 import { ErrorState } from "@/components/error-state";
+import { DocumentCard } from "@/components/assistant-ui/elements/document-card";
 import { cn } from "@/lib/utils";
 import attachmentIcon from "@/assets/attachment.svg";
 import microphoneIcon from "@/assets/microphone.svg";
@@ -316,7 +317,7 @@ const AssistantMessage: FC = () => {
         <MessagePrimitive.Parts
           components={{
             Text: MarkdownText,
-            tools: { by_name: { load_skill: SkillToolStatus, web_search: WebSearchToolStatus } },
+            tools: { by_name: { load_skill: SkillToolStatus, create_study_document: DocumentCard, web_search: WebSearchToolStatus } },
           }}
         />
         <AuiIf
