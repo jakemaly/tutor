@@ -228,3 +228,26 @@ Stop the app when done:
 ```powershell
 .\deployment\.venv\Scripts\python.exe -m modal app stop socratic-tutor-qwen-trained
 ```
+
+### Trained adapter on the snapshot server
+
+The snapshot server serves Jaylen's trained adapter as `socratic-tutor`, with the 4-bit base
+available as `socratic-tutor-base`. The adapter is loaded and warmed before the GPU snapshot;
+subsequent restores do not download or reapply it. Its private Hub revision is pinned in
+`deployment/modal_qwen.py`, and startup checks the converted files' hashes so it cannot
+silently serve an incomplete or different adapter.
+
+To prepare a new Modal volume, install the training dependencies and Modal SDK in the same
+Python environment, set `HF_TOKEN` to a token with read access to
+`socratictutor/tutor-rl-qwen35-9b-bigmath`, then run:
+
+```sh
+python deployment/stage_trained_adapter.py
+python -m modal run deployment/modal_qwen.py::download_model
+python -m modal deploy deployment/modal_qwen.py
+```
+
+The staging script downloads the pinned adapter, renames its text-model weights for the
+multimodal vLLM model, verifies the expected hashes, and uploads it to the existing private
+model-cache volume. The token is used only for the download and is not included in the
+snapshot or volume. Changing the adapter requires updating its revision and expected hashes.
