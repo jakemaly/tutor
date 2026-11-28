@@ -90,12 +90,26 @@ html, body, #root { width: 100%; min-width: 320px; height: 100%; margin: 0; }
 
 .app-main { position: relative; min-width: 0; min-height: 0; }
 .app-shell [data-collapsible="offcanvas"] [data-slot="sidebar-container"] { visibility: hidden; }
+[data-slot="sidebar"][data-mobile="true"],
+body:has([data-slot="sidebar"][data-mobile="true"]) [data-slot="sheet-overlay"] { transition: none; }
+.aui-sidebar-header { height: 54px; justify-content: center; }
 .chat-controls {
   display: flex;
   flex-shrink: 0;
   align-items: center;
   justify-content: space-between;
   padding: 10px 20px;
+}
+
+@media (min-width: 768px) {
+  .chat-controls { justify-content: flex-end; }
+  .chat-controls [data-slot="sidebar-trigger"] {
+    position: fixed;
+    top: 13px;
+    left: 20px;
+    z-index: 20;
+  }
+  .aui-sidebar-header { padding-inline-start: 52px; }
 }
 
 .new-chat-button {
@@ -147,6 +161,21 @@ html, body, #root { width: 100%; min-width: 320px; height: 100%; margin: 0; }
   letter-spacing: -0.015em;
   text-align: center;
   text-wrap: balance;
+}
+
+/* Match the assistant-ui empty-state entrance without moving the conversation layout. */
+@media (prefers-reduced-motion: no-preference) {
+  @keyframes aui-empty-entrance {
+    from { opacity: 0; transform: translateY(var(--aui-empty-offset, 8px)); }
+    to { opacity: 1; transform: none; }
+  }
+  .aui-thread-welcome,
+  .aui-empty-composer,
+  .aui-prompt-row button {
+    animation: aui-empty-entrance 500ms ease-out both;
+  }
+  .aui-thread-welcome { --aui-empty-offset: 4px; }
+  .aui-empty-composer { animation-delay: 360ms; }
 }
 
 .aui-prompt-suggestions, .aui-prompt-row {

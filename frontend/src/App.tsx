@@ -54,7 +54,7 @@ export default function App() {
   return (
     <AssistantRuntimeProvider runtime={runtime}>
       <TooltipProvider>
-        <SidebarProvider className="app-shell">
+        <SidebarProvider defaultOpen={false} className="app-shell">
           <ThreadListSidebar />
           <SidebarInset className="app-main">
             <ChatControls onNewChat={startNewChat} />

@@ -6,9 +6,10 @@ import base64
 import json
 import logging
 import re
+import time
 from typing import Any
 from urllib.parse import quote, unquote, urlparse
-from uuid import UUID
+from uuid import UUID, uuid4
 
 # These libraries adapt the browser stream, define HTTP routes, and represent model messages.
 from assistant_stream import RunController, create_run
@@ -28,6 +29,7 @@ from pydantic import BaseModel, ConfigDict
 from app.config import Settings
 from app.documents import UploadedSource, create_source
 from app.graph import create_graph
+from app.model_status import get_model_status
 from app.models import create_chat_model
 
 logger = logging.getLogger(__name__)
@@ -85,6 +87,7 @@ class ChatRequest(BaseModel):
 
     # Keep the incoming assistant-ui shape here; validate and convert each part below.
     messages: list[dict[str, Any]]
+    unstable_assistantMessageId: str | None = None
 
 
 def _message_text(message: dict[str, Any]) -> str:
@@ -457,6 +460,27 @@ def create_app(settings: Settings | None = None, model: BaseChatModel | None = N
     app.state.settings = app_settings
     app.state.graph = graph
     app.state.sources = {}
+    app.state.model_requests = {}
+
+    @app.get("/api/model-status")
+    async def model_status(message_id: str = "") -> dict[str, Any]:
+        now = time.time()
+        active = {
+            token: request for token, request in app.state.model_requests.items()
+            if now - request[1] < 900
+        }
+        app.state.model_requests = active
+        if len(active) != 1:
+            return {"stage": "waiting"} if active else {"stage": "unavailable"}
+        token, (run_id, started) = next(iter(active.items()))
+        if not message_id or message_id != run_id:
+            return {"stage": "waiting"}
+        status = await get_model_status(started)
+        if len(app.state.model_requests) != 1 or app.state.model_requests.get(token) != (
+            run_id, started
+        ):
+            return {"stage": "waiting"}
+        return status
 
     @app.get("/api/health")
     async def health() -> dict[str, str | bool]:
@@ -555,6 +579,8 @@ def create_app(settings: Settings | None = None, model: BaseChatModel | None = N
             )
         allowed_source_ids = _source_ids_from_messages(request.messages)
 
+        request_token = uuid4().hex
+
         async def run(controller: RunController) -> None:
             """Forward graph text to the stream and translate failures into safe UI errors."""
             try:
@@ -575,7 +601,10 @@ def create_app(settings: Settings | None = None, model: BaseChatModel | None = N
                     "The model request failed. Check LLM_BASE_URL, LLM_MODEL, "
                     "LLM_API_KEY, and the backend logs."
                 )
+            finally:
+                app.state.model_requests.pop(request_token, None)
 
+        app.state.model_requests[request_token] = (request.unstable_assistantMessageId, time.time())
         return DataStreamResponse(create_run(run))
 
     return app

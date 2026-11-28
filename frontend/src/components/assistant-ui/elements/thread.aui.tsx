@@ -1,3 +1,5 @@
+import { groupAdjacentTools } from "./group-activity";
+import { ActivityGroup, AssistantWaiting, SkillToolStatus, WebSearchToolStatus } from "./activity";
 import { MarkdownText } from "@/components/assistant-ui/elements/markdown-text";
 import { TooltipIconButton } from "@/components/assistant-ui/elements/tooltip-icon-button";
 import {
@@ -20,7 +22,6 @@ import {
   MessagePrimitive,
   ThreadPrimitive,
   useAuiEvent,
-  type ToolCallMessagePartProps,
   useAui,
   useAuiState,
 } from "@assistant-ui/react";
@@ -39,7 +40,6 @@ import {
   RefreshCwIcon,
   SquareIcon,
   XIcon,
-  GlobeIcon,
 } from "lucide-react";
 import { useRef, useState, type FC, type Ref } from "react";
 
@@ -115,6 +115,7 @@ export const Thread: FC = () => {
           <ThreadPrimitive.ViewportFooter
             className={cn(
               "aui-thread-viewport-footer",
+              isEmpty && "aui-empty-composer",
               !isEmpty && "aui-thread-viewport-footer-docked",
             )}
           >
@@ -164,10 +165,16 @@ const promptRows = [
 const PromptSuggestions: FC<{ onSelect: () => void }> = ({ onSelect }) => {
   return (
     <div className="aui-prompt-suggestions" role="group" aria-label="Suggested starting points">
-      {promptRows.map((row) => (
+      {promptRows.map((row, rowIndex) => (
         <div key={row[0]} className="aui-prompt-row">
-          {row.map((prompt) => (
-            <ThreadPrimitive.Suggestion key={prompt} prompt={prompt} send={false} onClick={onSelect}>
+          {row.map((prompt, columnIndex) => (
+            <ThreadPrimitive.Suggestion
+              key={prompt}
+              prompt={prompt}
+              send={false}
+              onClick={onSelect}
+              style={{ animationDelay: `${120 + (rowIndex * 2 + columnIndex) * 70}ms` }}
+            >
               {prompt}
             </ThreadPrimitive.Suggestion>
           ))}
@@ -313,31 +320,15 @@ const AssistantMessage: FC = () => {
         className="wrap-break-word"
       >
         <MessageTimestamp />
-        <MessagePrimitive.Parts
+        <MessagePrimitive.Unstable_PartsGrouped
+          groupingFunction={groupAdjacentTools}
           components={{
             Text: MarkdownText,
+            Group: ActivityGroup,
             tools: { by_name: { load_skill: SkillToolStatus, web_search: WebSearchToolStatus } },
           }}
         />
-        <AuiIf
-          condition={(s) => {
-            if (s.message.status?.type !== "running") return false;
-            const last = s.message.parts[s.message.parts.length - 1];
-            return !last || last.type !== "text";
-          }}
-
-        >
-          <span
-            data-slot="aui_assistant-message-indicator"
-            role="status"
-            aria-label="Assistant is working"
-            className="inline-flex items-center gap-1 px-2 py-1"
-          >
-            <span className="size-1 animate-bounce rounded-full bg-current [animation-delay:-0.3s] motion-reduce:animate-none" />
-            <span className="size-1 animate-bounce rounded-full bg-current [animation-delay:-0.15s] motion-reduce:animate-none" />
-            <span className="size-1 animate-bounce rounded-full bg-current motion-reduce:animate-none" />
-          </span>
-        </AuiIf>
+        <AssistantWaiting />
       </div>
 
       <AssistantError />
@@ -352,55 +343,6 @@ const AssistantMessage: FC = () => {
     </MessagePrimitive.Root>
   );
 };
-
-const SkillToolStatus: FC<ToolCallMessagePartProps<{ name?: string }, { loaded: boolean }>> = ({
-  args, result, status,
-}) => (
-  <p role="status" className="my-2 text-sm text-muted-foreground">
-    {result?.loaded ? "Loaded skill" : result?.loaded === false || status.type === "incomplete"
-      ? "Skill not loaded" : "Loading skill"}: <span className="font-medium">{args.name || "…"}</span>
-  </p>
-);
-
-type SearchResult = { title: string; url: string };
-
-const WebSearchToolStatus: FC<
-  ToolCallMessagePartProps<
-    { query?: string },
-    { results: SearchResult[]; skipped?: boolean }
-  >
-> = ({ args, result, status, isError }) =>
-  result?.skipped ? null : (
-    <div role="status" className="my-2 text-sm text-muted-foreground">
-      <p className="flex items-center gap-1.5">
-        <GlobeIcon className="size-3.5 shrink-0" aria-hidden="true" />
-        <span>
-          {isError || status.type === "incomplete"
-            ? "Search failed"
-            : result
-              ? "Searched"
-              : "Searching"}
-          : <span className="font-medium">{args.query || "…"}</span>
-        </span>
-      </p>
-      {result?.results?.length ? (
-        <ul className="mt-1 ms-5 flex list-disc flex-col gap-0.5">
-          {result.results.map((r) => (
-            <li key={r.url} className="truncate">
-              <a
-                href={r.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="hover:text-foreground underline underline-offset-2"
-              >
-                {r.title}
-              </a>
-            </li>
-          ))}
-        </ul>
-      ) : null}
-    </div>
-  );
 
 const AssistantError: FC = () => {
   const aui = useAui();
